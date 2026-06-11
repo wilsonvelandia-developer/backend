@@ -1,0 +1,24 @@
+{
+  "name": "tournament-platform",
+  "version": "1.0.0",
+  "description": "Multi-sport tournament management platform — backend microservices",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "services/*"
+  ],
+  "scripts": {
+    "db:up": "docker-compose up -d postgres",
+    "db:down": "docker-compose down",
+    "db:logs": "docker-compose logs -f postgres",
+    "infra:up": "docker-compose up -d",
+    "infra:down": "docker-compose down",
+    "migrate:up": "npm run migrate:up --workspace=db",
+    "migrate:down": "npm run migrate:down --workspace=db",
+    "migrate:create": "npm run migrate:create --workspace=db"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@tournament/db",
+  "version": "1.0.0",
+  "description": "Database migrations for tournament platform",
+  "private": true,
+  "scripts": {
+    "migrate:up": "node-pg-migrate up",
+    "migrate:down": "node-pg-migrate down",
+    "migrate:create": "node-pg-migrate create",
+    "seed": "node -r ts-node/register src/seed.ts"
+  },
+  "dependencies": {
+    "dotenv": "16.5.0",
+    "node-pg-migrate": "8.0.4",
+    "pg": "8.16.0"
+  },
+  "devDependencies": {
+    "@types/pg": "8.15.4",
+    "ts-node": "10.9.2",
+    "typescript": "5.8.3"
+  }
+}
