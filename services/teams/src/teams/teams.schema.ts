@@ -1,0 +1,80 @@
+import { z } from 'zod';
+
+// ── Team schemas ──────────────────────────────────────────────────────────────
+
+const teamBaseSchema = z.object({
+  tournamentId: z.string().uuid('tournamentId must be a valid UUID'),
+  name:         z.string().trim().min(2).max(200),
+  shortName:    z.string().trim().min(1).max(10).nullable().default(null),
+});
+
+export const createTeamSchema = teamBaseSchema;
+
+export const updateTeamSchema = teamBaseSchema
+  .omit({ tournamentId: true })
+  .partial()
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    { message: 'At least one field must be provided for update' },
+  );
+
+// ── Player schemas ────────────────────────────────────────────────────────────
+
+const VALID_POSITIONS: Record<string, string[]> = {
+  volleyball: ['setter', 'outside_hitter', 'opposite', 'middle_blocker', 'libero', 'defensive_specialist'],
+  football:   ['goalkeeper', 'defender', 'midfielder', 'forward'],
+  basketball: ['point_guard', 'shooting_guard', 'small_forward', 'power_forward', 'center'],
+  tennis:     ['singles', 'doubles'],
+};
+// Generic positions accepted when sport is unknown or not listed above
+export const ALL_POSITIONS = Object.values(VALID_POSITIONS).flat();
+
+const playerBaseSchema = z.object({
+  name: z.string().trim().min(2).max(200),
+
+  jerseyNumber: z
+    .number({ required_error: 'jerseyNumber is required' })
+    .int()
+    .min(0)
+    .max(999),
+
+  position: z
+    .string()
+    .trim()
+    .max(50)
+    .nullable()
+    .default(null),
+});
+
+export const createPlayerSchema = playerBaseSchema;
+
+export const updatePlayerSchema = playerBaseSchema
+  .extend({ isActive: z.boolean().optional() })
+  .partial()
+  .refine(
+    (data) => Object.keys(data).length > 0,
+    { message: 'At least one field must be provided for update' },
+  );
+
+// ── Param schemas ─────────────────────────────────────────────────────────────
+
+export const teamIdSchema = z.object({
+  id: z.string().uuid('id must be a valid UUID'),
+});
+
+export const playerParamsSchema = z.object({
+  id:       z.string().uuid('team id must be a valid UUID'),
+  playerId: z.string().uuid('playerId must be a valid UUID'),
+});
+
+export const listTeamsSchema = z.object({
+  tournamentId: z.string().uuid().optional(),
+});
+
+// ── DTO types ─────────────────────────────────────────────────────────────────
+
+export type CreateTeamDto   = z.infer<typeof createTeamSchema>;
+export type UpdateTeamDto   = z.infer<typeof updateTeamSchema>;
+export type CreatePlayerDto = z.infer<typeof createPlayerSchema>;
+export type UpdatePlayerDto = z.infer<typeof updatePlayerSchema>;
+export type ListTeamsQuery  = z.infer<typeof listTeamsSchema>;

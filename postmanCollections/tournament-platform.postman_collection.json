@@ -1,0 +1,566 @@
+{
+  "info": {
+    "name": "Tournament Platform API",
+    "description": "Multi-sport tournament management platform — complete API collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "gateway_url",     "value": "http://localhost:3000" },
+    { "key": "sports_url",      "value": "http://localhost:3001" },
+    { "key": "tournaments_url", "value": "http://localhost:3002" },
+    { "key": "teams_url",       "value": "http://localhost:3003" },
+    { "key": "matches_url",     "value": "http://localhost:3004" },
+    { "key": "standings_url",   "value": "http://localhost:3005" },
+    { "key": "jwt_token",       "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0LXVzZXItMDAxIiwiZW1haWwiOiJhZG1pbkBvbGltcGljLnRlc3QiLCJyb2xlIjoiYWRtaW4iLCJpYXQiOjE3ODEyMjU0MTksImV4cCI6MTc4MzgxNzQxOX0.5PBdzSKtJG46ifR1iS8nb9ydzkz8nZiHVb07EPHF3OY" },
+    { "key": "sport_id",        "value": "edb13f17-6eca-4153-bce1-62f42620a077" },
+    { "key": "tournament_id",   "value": "a1b2c3d4-0001-0000-0000-000000000000" },
+    { "key": "phase_id",        "value": "a1b2c3d4-0002-0000-0000-000000000000" },
+    { "key": "team_id",         "value": "b0000001-0000-0000-0000-000000000001" },
+    { "key": "player_id",       "value": "" },
+    { "key": "match_id",        "value": "c0000001-0001-0000-0000-000000000001" },
+    { "key": "phase_grupos_id",  "value": "a1b2c3d4-0002-0000-0000-000000000000" },
+    { "key": "phase_oro_sf_id",  "value": "a1b2c3d4-0003-0000-0000-000000000000" },
+    { "key": "phase_oro_final_id","value": "a1b2c3d4-0004-0000-0000-000000000000" },
+    { "key": "team_ga1",        "value": "b0000001-0000-0000-0000-000000000001" },
+    { "key": "team_ga2",        "value": "b0000001-0000-0000-0000-000000000002" },
+    { "key": "team_ga3",        "value": "b0000001-0000-0000-0000-000000000003" },
+    { "key": "team_ga4",        "value": "b0000001-0000-0000-0000-000000000004" },
+    { "key": "team_gb1",        "value": "b0000001-0000-0000-0000-000000000005" },
+    { "key": "team_gb2",        "value": "b0000001-0000-0000-0000-000000000006" },
+    { "key": "team_gb3",        "value": "b0000001-0000-0000-0000-000000000007" },
+    { "key": "team_gb4",        "value": "b0000001-0000-0000-0000-000000000008" },
+    { "key": "match_ga1_ga2",   "value": "c0000001-0001-0000-0000-000000000001" },
+    { "key": "match_ga1_ga3",   "value": "c0000001-0001-0000-0000-000000000002" },
+    { "key": "match_ga1_ga4",   "value": "c0000001-0001-0000-0000-000000000003" },
+    { "key": "match_ga2_ga3",   "value": "c0000001-0001-0000-0000-000000000004" },
+    { "key": "match_ga2_ga4",   "value": "c0000001-0001-0000-0000-000000000005" },
+    { "key": "match_ga3_ga4",   "value": "c0000001-0001-0000-0000-000000000006" },
+    { "key": "match_gb1_gb2",   "value": "c0000001-0002-0000-0000-000000000001" },
+    { "key": "match_gb1_gb3",   "value": "c0000001-0002-0000-0000-000000000002" },
+    { "key": "match_gb1_gb4",   "value": "c0000001-0002-0000-0000-000000000003" },
+    { "key": "match_gb2_gb3",   "value": "c0000001-0002-0000-0000-000000000004" },
+    { "key": "match_gb2_gb4",   "value": "c0000001-0002-0000-0000-000000000005" },
+    { "key": "match_gb3_gb4",   "value": "c0000001-0002-0000-0000-000000000006" }
+  ],
+  "item": [
+    {
+      "name": "Gateway",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{gateway_url}}/health"
+          }
+        },
+        {
+          "name": "401 — Sin token",
+          "request": {
+            "method": "GET",
+            "url": "{{gateway_url}}/api/sports"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sports",
+      "item": [
+        {
+          "name": "Listar deportes",
+          "request": {
+            "method": "GET",
+            "url": "{{sports_url}}/sports"
+          }
+        },
+        {
+          "name": "Obtener deporte por ID",
+          "request": {
+            "method": "GET",
+            "url": "{{sports_url}}/sports/{{sport_id}}"
+          }
+        },
+        {
+          "name": "Crear deporte",
+          "request": {
+            "method": "POST",
+            "url": "{{sports_url}}/sports",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role",  "value": "admin" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Handball\",\n  \"slug\": \"handball\",\n  \"playersPerTeam\": 7,\n  \"hasSets\": false,\n  \"winMargin\": 2,\n  \"periodsPerMatch\": 2,\n  \"maxSubstitutions\": null,\n  \"hasRotation\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Actualizar deporte",
+          "request": {
+            "method": "PUT",
+            "url": "{{sports_url}}/sports/{{sport_id}}",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "x-user-role",  "value": "admin" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"maxSubstitutions\": 6\n}"
+            }
+          }
+        },
+        {
+          "name": "Eliminar deporte",
+          "request": {
+            "method": "DELETE",
+            "url": "{{sports_url}}/sports/{{sport_id}}",
+            "header": [{ "key": "x-user-role", "value": "admin" }]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tournaments",
+      "item": [
+        {
+          "name": "Listar torneos",
+          "request": {
+            "method": "GET",
+            "url": "{{tournaments_url}}/tournaments"
+          }
+        },
+        {
+          "name": "Listar torneos — filtrar por deporte",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{tournaments_url}}/tournaments?sportId={{sport_id}}",
+              "query": [{ "key": "sportId", "value": "{{sport_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Crear torneo",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const r = pm.response.json(); pm.collectionVariables.set('tournament_id', r.data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{tournaments_url}}/tournaments",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sportId\": \"{{sport_id}}\",\n  \"name\": \"Torneo de Prueba 2026\",\n  \"season\": \"2026\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Obtener torneo",
+          "request": {
+            "method": "GET",
+            "url": "{{tournaments_url}}/tournaments/{{tournament_id}}"
+          }
+        },
+        {
+          "name": "Actualizar torneo — activar",
+          "request": {
+            "method": "PUT",
+            "url": "{{tournaments_url}}/tournaments/{{tournament_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"status\": \"active\"\n}" }
+          }
+        },
+        {
+          "name": "Agregar fase — Grupos",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const r = pm.response.json(); pm.collectionVariables.set('phase_id', r.data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{tournaments_url}}/tournaments/{{tournament_id}}/phases",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fase de Grupos\",\n  \"format\": \"round_robin\",\n  \"orderIndex\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar fases",
+          "request": {
+            "method": "GET",
+            "url": "{{tournaments_url}}/tournaments/{{tournament_id}}/phases"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Teams",
+      "item": [
+        {
+          "name": "Crear equipo A",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const r = pm.response.json(); pm.collectionVariables.set('team_id', r.data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{teams_url}}/teams",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"name\": \"Equipo Alpha\",\n  \"shortName\": \"ALP\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar equipos del torneo",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{teams_url}}/teams?tournamentId={{tournament_id}}",
+              "query": [{ "key": "tournamentId", "value": "{{tournament_id}}" }]
+            }
+          }
+        },
+        {
+          "name": "Agregar jugador (setter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const r = pm.response.json(); pm.collectionVariables.set('player_id', r.data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{teams_url}}/teams/{{team_id}}/players",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Carlos Gomez\",\n  \"jerseyNumber\": 1,\n  \"position\": \"setter\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar jugadores del equipo",
+          "request": {
+            "method": "GET",
+            "url": "{{teams_url}}/teams/{{team_id}}/players"
+          }
+        },
+        {
+          "name": "Actualizar jugador — desactivar",
+          "request": {
+            "method": "PUT",
+            "url": "{{teams_url}}/teams/{{team_id}}/players/{{player_id}}",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"isActive\": false\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Matches",
+      "item": [
+        {
+          "name": "Programar partido",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": ["const r = pm.response.json(); pm.collectionVariables.set('match_id', r.data.id);"]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "url": "{{matches_url}}/matches",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phaseId\": \"{{phase_id}}\",\n  \"homeTeamId\": \"TEAM_A_ID\",\n  \"awayTeamId\": \"TEAM_B_ID\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Iniciar partido",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/{{match_id}}/start"
+          }
+        },
+        {
+          "name": "Obtener partido con períodos",
+          "request": {
+            "method": "GET",
+            "url": "{{matches_url}}/matches/{{match_id}}"
+          }
+        },
+        {
+          "name": "Actualizar marcador — Set 1 (25-20)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/{{match_id}}/periods/1/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 25,\n  \"awayScore\": 20\n}" }
+          }
+        },
+        {
+          "name": "Actualizar marcador — Set 1 inválido (26-25)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/{{match_id}}/periods/1/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 26,\n  \"awayScore\": 25\n}" }
+          }
+        },
+        {
+          "name": "Registrar alineación (voleibol)",
+          "request": {
+            "method": "POST",
+            "url": "{{matches_url}}/matches/{{match_id}}/lineups",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"setNumber\": 1,\n  \"lineup\": [\n    { \"position\": 1, \"playerId\": \"PLAYER_1_ID\" },\n    { \"position\": 2, \"playerId\": \"PLAYER_2_ID\" },\n    { \"position\": 3, \"playerId\": \"PLAYER_3_ID\" },\n    { \"position\": 4, \"playerId\": \"PLAYER_4_ID\" },\n    { \"position\": 5, \"playerId\": \"PLAYER_5_ID\" },\n    { \"position\": 6, \"playerId\": \"PLAYER_6_ID\" }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "Aplicar rotación (voleibol)",
+          "request": {
+            "method": "POST",
+            "url": "{{matches_url}}/matches/{{match_id}}/rotate",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"setNumber\": 1\n}" }
+          }
+        },
+        {
+          "name": "Registrar sustitución",
+          "request": {
+            "method": "POST",
+            "url": "{{matches_url}}/matches/{{match_id}}/substitutions",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"periodNumber\": 1,\n  \"playerOutId\": \"PLAYER_OUT_ID\",\n  \"playerInId\": \"PLAYER_IN_ID\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Ver sustituciones del partido",
+          "request": {
+            "method": "GET",
+            "url": "{{matches_url}}/matches/{{match_id}}/substitutions"
+          }
+        },
+        {
+          "name": "Finalizar partido",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/{{match_id}}/finish"
+          }
+        },
+        {
+          "name": "Listar partidos por fase",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{matches_url}}/matches?phaseId={{phase_id}}",
+              "query": [{ "key": "phaseId", "value": "{{phase_id}}" }]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Standings",
+      "item": [
+        {
+          "name": "Tabla de posiciones",
+          "request": {
+            "method": "GET",
+            "url": "{{standings_url}}/standings/{{phase_id}}"
+          }
+        },
+        {
+          "name": "Recalcular standings",
+          "request": {
+            "method": "POST",
+            "url": "{{standings_url}}/standings/recalculate",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phaseId\": \"{{phase_id}}\"\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🏐 Copa Olimpica 2026 — Flujo completo",
+      "description": "Flujo guiado del torneo de prueba. Ejecutar en orden.",
+      "item": [
+        {
+          "name": "0. Ver torneo Copa Olimpica",
+          "request": { "method": "GET", "url": "{{tournaments_url}}/tournaments/a1b2c3d4-0001-0000-0000-000000000000" }
+        },
+        {
+          "name": "0. Ver todas las fases",
+          "request": { "method": "GET", "url": "{{tournaments_url}}/tournaments/a1b2c3d4-0001-0000-0000-000000000000/phases" }
+        },
+        {
+          "name": "0. Ver equipos del torneo",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{teams_url}}/teams?tournamentId=a1b2c3d4-0001-0000-0000-000000000000",
+              "query": [{ "key": "tournamentId", "value": "a1b2c3d4-0001-0000-0000-000000000000" }]
+            }
+          }
+        },
+        {
+          "name": "0. Ver jugadores Grupo A — Equipo 1",
+          "request": { "method": "GET", "url": "{{teams_url}}/teams/b0000001-0000-0000-0000-000000000001/players" }
+        },
+        {
+          "name": "1. Fase Grupos — Ver partidos programados",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{matches_url}}/matches?phaseId=a1b2c3d4-0002-0000-0000-000000000000",
+              "query": [{ "key": "phaseId", "value": "a1b2c3d4-0002-0000-0000-000000000000" }]
+            }
+          }
+        },
+        {
+          "name": "2. INICIAR partido GA1 vs GA2",
+          "request": { "method": "PUT", "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/start" }
+        },
+        {
+          "name": "3. Registrar alineacion GA1 — Set 1",
+          "request": {
+            "method": "POST",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/lineups",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"b0000001-0000-0000-0000-000000000001\",\n  \"setNumber\": 1,\n  \"lineup\": [\n    { \"position\": 1, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_01\" },\n    { \"position\": 2, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_02\" },\n    { \"position\": 3, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_03\" },\n    { \"position\": 4, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_04\" },\n    { \"position\": 5, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_05\" },\n    { \"position\": 6, \"playerId\": \"REEMPLAZAR_CON_ID_JUGADOR_GA1_06\" }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "4. Marcar Set 1 — GA1 gana (25-18)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/periods/1/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 25,\n  \"awayScore\": 18\n}" }
+          }
+        },
+        {
+          "name": "4b. Marcar Set 1 — INVALIDO (26-25, margen 1)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/periods/1/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 26,\n  \"awayScore\": 25\n}" }
+          }
+        },
+        {
+          "name": "5. Marcar Set 2 — GA1 gana (25-21)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/periods/2/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 25,\n  \"awayScore\": 21\n}" }
+          }
+        },
+        {
+          "name": "6. Marcar Set 3 — GA2 gana (22-25)",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/periods/3/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 22,\n  \"awayScore\": 25\n}" }
+          }
+        },
+        {
+          "name": "7. Marcar Set 4 — GA1 gana (25-19) → 3-1 GA1 gana",
+          "request": {
+            "method": "PUT",
+            "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/periods/4/score",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"homeScore\": 25,\n  \"awayScore\": 19\n}" }
+          }
+        },
+        {
+          "name": "8. FINALIZAR partido GA1 vs GA2",
+          "request": { "method": "PUT", "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001/finish" }
+        },
+        {
+          "name": "9. Ver estado del partido con sets",
+          "request": { "method": "GET", "url": "{{matches_url}}/matches/c0000001-0001-0000-0000-000000000001" }
+        },
+        {
+          "name": "10. Recalcular standings Fase Grupos",
+          "request": {
+            "method": "POST",
+            "url": "{{standings_url}}/standings/recalculate",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"phaseId\": \"a1b2c3d4-0002-0000-0000-000000000000\"\n}" }
+          }
+        },
+        {
+          "name": "11. Ver tabla de posiciones Fase Grupos",
+          "request": { "method": "GET", "url": "{{standings_url}}/standings/a1b2c3d4-0002-0000-0000-000000000000" }
+        },
+        {
+          "name": "12. [Via Gateway] Listar deportes con JWT",
+          "request": {
+            "method": "GET",
+            "url": "{{gateway_url}}/api/sports",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }]
+          }
+        },
+        {
+          "name": "12b. [Via Gateway] Sin JWT → 401",
+          "request": { "method": "GET", "url": "{{gateway_url}}/api/sports" }
+        },
+        {
+          "name": "13. Ver Copa Oro — Semifinales (TBD)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{matches_url}}/matches?phaseId=a1b2c3d4-0003-0000-0000-000000000000",
+              "query": [{ "key": "phaseId", "value": "a1b2c3d4-0003-0000-0000-000000000000" }]
+            }
+          }
+        },
+        {
+          "name": "14. Ver Copa Plata — Semifinales (TBD)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{matches_url}}/matches?phaseId=a1b2c3d4-0005-0000-0000-000000000000",
+              "query": [{ "key": "phaseId", "value": "a1b2c3d4-0005-0000-0000-000000000000" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

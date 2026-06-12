@@ -44,7 +44,7 @@ declare global {
  */
 export const authMiddleware = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ): void => {
   const authHeader = req.headers['authorization'];

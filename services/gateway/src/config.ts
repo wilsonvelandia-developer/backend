@@ -1,4 +1,10 @@
-import 'dotenv/config';
+import path from 'path';
+import dotenv from 'dotenv';
+
+// Load .env from monorepo root (two levels up from services/gateway)
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '..', '.env') });
+// Fallback: also try local .env if present
+dotenv.config();
 
 /**
  * Gateway configuration loaded from environment variables.

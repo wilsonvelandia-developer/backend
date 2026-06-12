@@ -52,7 +52,7 @@ export function createApp() {
   // ── HTTP request logging ───────────────────────────────────────────────────
   app.use(pinoHttp({
     logger,
-    customProps: (req, res) => ({
+    customProps: (_req, res) => ({
       correlationId: res.locals['correlationId'],
     }),
     // Never log Authorization header value — only presence

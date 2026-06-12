@@ -1,7 +1,7 @@
 {
-  "name": "@tournament/gateway",
+  "name": "@tournament/standings",
   "version": "1.0.0",
-  "description": "API Gateway — JWT validation, routing, rate limiting, correlation IDs",
+  "description": "Standings service — standings calculation and retrieval per phase",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
@@ -9,33 +9,22 @@
     "build:watch": "tsc --watch",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
-    "lint": "eslint src --ext .ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tournament/shared": "*",
-    "cors": "2.8.5",
     "dotenv": "16.5.0",
     "express": "5.1.0",
-    "express-http-proxy": "2.1.1",
-    "express-rate-limit": "7.5.0",
     "helmet": "8.0.0",
-    "jsonwebtoken": "9.0.2",
-    "passport": "0.7.0",
-    "passport-jwt": "4.0.1",
+    "pg": "8.16.0",
     "pino": "9.7.0",
     "pino-http": "10.4.0",
-    "uuid": "11.1.1"
+    "zod": "3.25.51"
   },
   "devDependencies": {
-    "@types/cors": "2.8.17",
     "@types/express": "5.0.3",
-    "@types/express-http-proxy": "1.6.6",
-    "@types/jsonwebtoken": "9.0.9",
     "@types/node": "22.15.29",
-    "@types/passport": "1.0.17",
-    "@types/passport-jwt": "4.0.1",
-    "@types/uuid": "10.0.0",
+    "@types/pg": "8.15.4",
     "ts-node": "10.9.2",
     "typescript": "5.8.3"
   }
