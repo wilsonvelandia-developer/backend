@@ -335,6 +335,8 @@ export class TournamentsRepository {
     const durationMin     = config.matchDurationMinutes || tournament.match_duration_minutes;
     const perDay          = config.matchesPerDay || tournament.matches_per_day;
     const firstTime       = config.firstMatchTime || tournament.first_match_time;
+    const numVenues       = tournament.num_venues || 1;
+    const venueName       = tournament.venue_name || 'Cancha';
     const randomOrder     = config.randomOrder ?? false;
 
     // Load groups
@@ -383,10 +385,12 @@ export class TournamentsRepository {
     // Delete existing matches for this phase (allows re-generation)
     await this.pool.query(`DELETE FROM matches WHERE phase_id = $1`, [phaseId]);
 
-    // Schedule matches: assign date/time sequentially
+    // Schedule matches: assign date/time sequentially across venues
+    // With N venues, N matches can happen at the same time slot
     const createdMatches: unknown[] = [];
     let currentDate = startDate;
     let matchSlot   = 0; // slot within the day (0 to perDay-1)
+    let venueSlot   = 0; // current venue (0 to numVenues-1)
 
     for (const match of allMatches) {
       // Calculate time for this slot
@@ -397,20 +401,30 @@ export class TournamentsRepository {
       const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
       const scheduledAt = `${currentDate}T${timeStr}`;
 
+      // Venue label: "Cancha 1", "Cancha 2", etc.
+      const matchVenue = numVenues > 1
+        ? `${venueName} ${venueSlot + 1}`
+        : venueName;
+
       const insertResult = await this.pool.query(
         `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at)
          VALUES ($1, $2, $3, $4) RETURNING id, phase_id, home_team_id, away_team_id, scheduled_at, status`,
         [phaseId, match.homeTeamId, match.awayTeamId, scheduledAt],
       );
-      createdMatches.push({ ...insertResult.rows[0], groupName: match.groupName });
+      createdMatches.push({ ...insertResult.rows[0], groupName: match.groupName, venue: matchVenue });
 
-      matchSlot++;
-      if (matchSlot >= perDay) {
-        matchSlot = 0;
-        // Advance to next day
-        const d = new Date(currentDate);
-        d.setDate(d.getDate() + 1);
-        currentDate = d.toISOString().slice(0, 10);
+      venueSlot++;
+      if (venueSlot >= numVenues) {
+        // All venues used for this time slot — advance to next slot
+        venueSlot = 0;
+        matchSlot++;
+        if (matchSlot >= perDay) {
+          // Day full — advance to next day
+          matchSlot = 0;
+          const d = new Date(currentDate);
+          d.setDate(d.getDate() + 1);
+          currentDate = d.toISOString().slice(0, 10);
+        }
       }
     }
 
