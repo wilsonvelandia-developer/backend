@@ -77,6 +77,12 @@ export interface Tournament {
   facebookUrl: string | null;
   tiktokUrl: string | null;
   youtubeUrl: string | null;
+  // Fixture configuration
+  matchDurationMinutes: number;
+  matchesPerDay: number;
+  firstMatchTime: string;
+  numVenues: number;
+  venueName: string | null;
   createdAt: string;
   updatedAt: string;
 }

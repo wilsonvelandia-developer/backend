@@ -170,7 +170,7 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     }
   });
 
-  // POST /tournaments/:id/groups — save group draw (array of { teamId, groupName, drawOrder })
+  // POST /tournaments/:id/groups — save group draw
   router.post('/:id/groups', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = tournamentIdSchema.parse(req.params);
@@ -178,6 +178,24 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
       await service.saveGroupDraw(id, assignments);
       const groups = await service.getGroups(id);
       res.status(201).json({ data: groups });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/generate-fixture — generate group phase matches
+  router.post('/:id/generate-fixture', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const config = req.body as {
+        startDate?: string;
+        matchDurationMinutes?: number;
+        matchesPerDay?: number;
+        firstMatchTime?: string;
+        randomOrder?: boolean;
+      };
+      const matches = await service.generateGroupFixture(id, config);
+      res.status(201).json({ data: matches });
     } catch (err) {
       next(err);
     }

@@ -49,6 +49,11 @@ export class TournamentsService {
       facebookUrl:          dto.facebookUrl ?? null,
       tiktokUrl:            dto.tiktokUrl ?? null,
       youtubeUrl:           dto.youtubeUrl ?? null,
+      matchDurationMinutes: 90,
+      matchesPerDay:        6,
+      firstMatchTime:       '08:00',
+      numVenues:            1,
+      venueName:            null,
     });
   }
 
@@ -113,5 +118,23 @@ export class TournamentsService {
 
   async saveGroupDraw(tournamentId: string, assignments: Array<{ teamId: string; groupName: string; drawOrder: number }>): Promise<void> {
     return this.repo.saveGroupDraw(tournamentId, assignments);
+  }
+
+  /**
+   * Generates round-robin matches for the group phase.
+   * Uses circle method algorithm — no repeated matchups.
+   * Creates a "Fase de Grupos" phase if it doesn't exist.
+   */
+  async generateGroupFixture(
+    tournamentId: string,
+    config: {
+      startDate?: string;
+      matchDurationMinutes?: number;
+      matchesPerDay?: number;
+      firstMatchTime?: string;
+      randomOrder?: boolean;
+    },
+  ): Promise<unknown[]> {
+    return this.repo.generateGroupFixture(tournamentId, config);
   }
 }

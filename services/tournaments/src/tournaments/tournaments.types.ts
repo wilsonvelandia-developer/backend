@@ -30,6 +30,11 @@ export interface TournamentRow {
   facebook_url:           string | null;
   tiktok_url:             string | null;
   youtube_url:            string | null;
+  match_duration_minutes: number;
+  matches_per_day:        number;
+  first_match_time:       string;
+  num_venues:             number;
+  venue_name:             string | null;
   created_at:             Date;
   updated_at:             Date;
 }
@@ -63,6 +68,11 @@ export function mapTournamentRow(row: TournamentRow): Tournament {
     facebookUrl:           row.facebook_url,
     tiktokUrl:             row.tiktok_url,
     youtubeUrl:            row.youtube_url,
+    matchDurationMinutes:  row.match_duration_minutes,
+    matchesPerDay:         row.matches_per_day,
+    firstMatchTime:        row.first_match_time,
+    numVenues:             row.num_venues,
+    venueName:             row.venue_name,
     createdAt:             row.created_at.toISOString(),
     updatedAt:             row.updated_at.toISOString(),
   };
@@ -94,6 +104,11 @@ export interface CreateTournamentInput {
   facebookUrl:           string | null;
   tiktokUrl:             string | null;
   youtubeUrl:            string | null;
+  matchDurationMinutes:  number;
+  matchesPerDay:         number;
+  firstMatchTime:        string;
+  numVenues:             number;
+  venueName:             string | null;
 }
 
 export type UpdateTournamentInput = Partial<CreateTournamentInput> & {

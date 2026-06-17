@@ -116,6 +116,11 @@ export class TournamentsRepository {
       facebookUrl:          'facebook_url',
       tiktokUrl:            'tiktok_url',
       youtubeUrl:           'youtube_url',
+      matchDurationMinutes: 'match_duration_minutes',
+      matchesPerDay:        'matches_per_day',
+      firstMatchTime:       'first_match_time',
+      numVenues:            'num_venues',
+      venueName:            'venue_name',
     };
 
     for (const [key, column] of Object.entries(columnMap)) {
@@ -286,19 +291,13 @@ export class TournamentsRepository {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
-
-      // Delete existing draw for this tournament
       await client.query(`DELETE FROM team_groups WHERE tournament_id = $1`, [tournamentId]);
-
-      // Insert new assignments
       for (const a of assignments) {
         await client.query(
-          `INSERT INTO team_groups (tournament_id, team_id, group_name, draw_order)
-           VALUES ($1, $2, $3, $4)`,
+          `INSERT INTO team_groups (tournament_id, team_id, group_name, draw_order) VALUES ($1, $2, $3, $4)`,
           [tournamentId, a.teamId, a.groupName, a.drawOrder],
         );
       }
-
       await client.query('COMMIT');
     } catch (err) {
       await client.query('ROLLBACK');
@@ -306,5 +305,154 @@ export class TournamentsRepository {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * Generates round-robin matches for all groups using the circle method.
+   * Algorithm:
+   *  - For n teams: n-1 rounds, each round has n/2 matches
+   *  - If odd number of teams: add BYE (team rests that round)
+   *  - Matches are scheduled sequentially based on tournament config
+   */
+  async generateGroupFixture(
+    tournamentId: string,
+    config: {
+      startDate?: string;
+      matchDurationMinutes?: number;
+      matchesPerDay?: number;
+      firstMatchTime?: string;
+      randomOrder?: boolean;
+    },
+  ): Promise<unknown[]> {
+    // Load tournament config
+    const tResult = await this.pool.query<TournamentRow>(
+      `SELECT * FROM tournaments WHERE id = $1`, [tournamentId],
+    );
+    if (tResult.rowCount === 0) throw new NotFoundError('Tournament', tournamentId);
+    const tournament = tResult.rows[0];
+
+    const startDate       = config.startDate || tournament.start_date || new Date().toISOString().slice(0, 10);
+    const durationMin     = config.matchDurationMinutes || tournament.match_duration_minutes;
+    const perDay          = config.matchesPerDay || tournament.matches_per_day;
+    const firstTime       = config.firstMatchTime || tournament.first_match_time;
+    const randomOrder     = config.randomOrder ?? false;
+
+    // Load groups
+    const groupsResult = await this.pool.query<{ team_id: string; group_name: string; draw_order: number }>(
+      `SELECT team_id, group_name, draw_order FROM team_groups WHERE tournament_id = $1 ORDER BY group_name, draw_order`,
+      [tournamentId],
+    );
+    if (groupsResult.rowCount === 0) throw new BusinessRuleError('No hay sorteo de grupos confirmado. Realiza el sorteo primero.');
+
+    // Group teams by group name
+    const groupMap = new Map<string, string[]>();
+    for (const row of groupsResult.rows) {
+      if (!groupMap.has(row.group_name)) groupMap.set(row.group_name, []);
+      groupMap.get(row.group_name)!.push(row.team_id);
+    }
+
+    // Generate round-robin matches per group using circle method
+    const allMatches: Array<{ homeTeamId: string; awayTeamId: string; groupName: string; roundNum: number }> = [];
+
+    for (const [groupName, teamIds] of groupMap) {
+      const matches = this.circleMethodRoundRobin(teamIds);
+      if (randomOrder) {
+        // Fisher-Yates shuffle
+        for (let i = matches.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [matches[i], matches[j]] = [matches[j], matches[i]];
+        }
+      }
+      matches.forEach((m, idx) => allMatches.push({ ...m, groupName, roundNum: idx + 1 }));
+    }
+
+    // Create or find "Fase de Grupos" phase
+    let phaseResult = await this.pool.query<PhaseRow>(
+      `SELECT * FROM phases WHERE tournament_id = $1 AND name = 'Fase de Grupos' LIMIT 1`,
+      [tournamentId],
+    );
+    if (phaseResult.rowCount === 0) {
+      phaseResult = await this.pool.query<PhaseRow>(
+        `INSERT INTO phases (tournament_id, name, format, order_index, status)
+         VALUES ($1, 'Fase de Grupos', 'groups', 1, 'pending') RETURNING *`,
+        [tournamentId],
+      );
+    }
+    const phaseId = phaseResult.rows[0].id;
+
+    // Delete existing matches for this phase (allows re-generation)
+    await this.pool.query(`DELETE FROM matches WHERE phase_id = $1`, [phaseId]);
+
+    // Schedule matches: assign date/time sequentially
+    const createdMatches: unknown[] = [];
+    let currentDate = startDate;
+    let matchSlot   = 0; // slot within the day (0 to perDay-1)
+
+    for (const match of allMatches) {
+      // Calculate time for this slot
+      const [h, m] = firstTime.split(':').map(Number);
+      const startMinutes = h * 60 + m + (matchSlot * durationMin);
+      const hours   = Math.floor(startMinutes / 60);
+      const minutes = startMinutes % 60;
+      const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+      const scheduledAt = `${currentDate}T${timeStr}`;
+
+      const insertResult = await this.pool.query(
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at)
+         VALUES ($1, $2, $3, $4) RETURNING id, phase_id, home_team_id, away_team_id, scheduled_at, status`,
+        [phaseId, match.homeTeamId, match.awayTeamId, scheduledAt],
+      );
+      createdMatches.push({ ...insertResult.rows[0], groupName: match.groupName });
+
+      matchSlot++;
+      if (matchSlot >= perDay) {
+        matchSlot = 0;
+        // Advance to next day
+        const d = new Date(currentDate);
+        d.setDate(d.getDate() + 1);
+        currentDate = d.toISOString().slice(0, 10);
+      }
+    }
+
+    return createdMatches;
+  }
+
+  /**
+   * Circle method for round-robin scheduling.
+   * Returns all unique pairings without repetition.
+   * For n teams: (n-1) rounds × (n/2) matches per round.
+   * If odd n: adds BYE (one team rests each round).
+   */
+  private circleMethodRoundRobin(teamIds: string[]): Array<{ homeTeamId: string; awayTeamId: string }> {
+    const teams = [...teamIds];
+    const hasBye = teams.length % 2 !== 0;
+    if (hasBye) teams.push('BYE');
+
+    const n = teams.length;
+    const rounds = n - 1;
+    const matchesPerRound = n / 2;
+    const allMatches: Array<{ homeTeamId: string; awayTeamId: string }> = [];
+
+    const fixed    = teams[0];
+    const rotating = teams.slice(1);
+
+    for (let r = 0; r < rounds; r++) {
+      const roundTeams = [fixed, ...rotating];
+
+      for (let m = 0; m < matchesPerRound; m++) {
+        const home = roundTeams[m];
+        const away = roundTeams[n - 1 - m];
+
+        // Skip BYE matches
+        if (home === 'BYE' || away === 'BYE') continue;
+
+        allMatches.push({ homeTeamId: home, awayTeamId: away });
+      }
+
+      // Rotate: move last element to front
+      rotating.unshift(rotating.pop()!);
+    }
+
+    return allMatches;
   }
 }
