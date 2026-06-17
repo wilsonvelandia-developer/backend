@@ -62,10 +62,24 @@ export class TournamentsRepository {
     }
 
     const result = await this.pool.query<TournamentRow>(
-      `INSERT INTO tournaments (sport_id, name, season, max_subs_override)
-       VALUES ($1, $2, $3, $4)
-       RETURNING *`,
-      [input.sportId, input.name, input.season, input.maxSubsOverride],
+      `INSERT INTO tournaments (
+        sport_id, name, season, max_subs_override,
+        start_date, registration_deadline, expected_teams, num_groups,
+        category, birth_year_from, validate_birth_from, birth_year_to, validate_birth_to,
+        contact_phone, address, location_url,
+        image_url, description, entry_fee, rules_file_url, invitation_file_url,
+        instagram_url, facebook_url, tiktok_url, youtube_url
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+      ) RETURNING *`,
+      [
+        input.sportId, input.name, input.season, input.maxSubsOverride,
+        input.startDate, input.registrationDeadline, input.expectedTeams, input.numGroups,
+        input.category, input.birthYearFrom, input.validateBirthFrom, input.birthYearTo, input.validateBirthTo,
+        input.contactPhone, input.address, input.locationUrl,
+        input.imageUrl, input.description, input.entryFee, input.rulesFileUrl, input.invitationFileUrl,
+        input.instagramUrl, input.facebookUrl, input.tiktokUrl, input.youtubeUrl,
+      ],
     );
     return mapTournamentRow(result.rows[0]);
   }
@@ -76,11 +90,32 @@ export class TournamentsRepository {
     let idx = 1;
 
     const columnMap: Record<string, string> = {
-      sportId:         'sport_id',
-      name:            'name',
-      season:          'season',
-      maxSubsOverride: 'max_subs_override',
-      status:          'status',
+      sportId:              'sport_id',
+      name:                 'name',
+      season:               'season',
+      maxSubsOverride:      'max_subs_override',
+      status:               'status',
+      startDate:            'start_date',
+      registrationDeadline: 'registration_deadline',
+      expectedTeams:        'expected_teams',
+      numGroups:            'num_groups',
+      category:             'category',
+      birthYearFrom:        'birth_year_from',
+      validateBirthFrom:    'validate_birth_from',
+      birthYearTo:          'birth_year_to',
+      validateBirthTo:      'validate_birth_to',
+      contactPhone:         'contact_phone',
+      address:              'address',
+      locationUrl:          'location_url',
+      imageUrl:             'image_url',
+      description:          'description',
+      entryFee:             'entry_fee',
+      rulesFileUrl:         'rules_file_url',
+      invitationFileUrl:    'invitation_file_url',
+      instagramUrl:         'instagram_url',
+      facebookUrl:          'facebook_url',
+      tiktokUrl:            'tiktok_url',
+      youtubeUrl:           'youtube_url',
     };
 
     for (const [key, column] of Object.entries(columnMap)) {
@@ -213,5 +248,18 @@ export class TournamentsRepository {
       [phaseId, tournamentId],
     );
     if (result.rowCount === 0) throw new NotFoundError('Phase', phaseId);
+  }
+
+  /**
+   * Registers a user as staff for a tournament.
+   * ON CONFLICT DO NOTHING — safe to call multiple times.
+   */
+  async registerStaff(tournamentId: string, userId: string, staffRole: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO tournament_staff (user_id, tournament_id, staff_role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, tournament_id, staff_role) DO NOTHING`,
+      [userId, tournamentId, staffRole],
+    );
   }
 }

@@ -14,6 +14,7 @@ export interface SportRow {
   periods_per_match:    number;
   max_substitutions:    number | null;
   has_rotation:         boolean;
+  icon_url:             string | null;
   created_at:           Date;
   updated_at:           Date;
 }
@@ -33,6 +34,7 @@ export function mapSportRow(row: SportRow): Sport {
     periodsPerMatch:    row.periods_per_match,
     maxSubstitutions:   row.max_substitutions,
     hasRotation:        row.has_rotation,
+    iconUrl:            row.icon_url,
     createdAt:          row.created_at.toISOString(),
     updatedAt:          row.updated_at.toISOString(),
   };
@@ -51,6 +53,7 @@ export interface CreateSportInput {
   periodsPerMatch:    number;
   maxSubstitutions:   number | null;
   hasRotation:        boolean;
+  iconUrl:            string | null;
 }
 
 /** Input for updating an existing sport (all fields optional). */

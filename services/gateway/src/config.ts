@@ -33,6 +33,10 @@ export const config = {
     expiresIn: optionalEnv('JWT_EXPIRES_IN', '1h'),
   },
 
+  db: {
+    connectionString: requireEnv('DATABASE_URL'),
+  },
+
   services: {
     sports:      optionalEnv('SPORTS_SERVICE_URL',      'http://localhost:3001'),
     tournaments: optionalEnv('TOURNAMENTS_SERVICE_URL', 'http://localhost:3002'),

@@ -1,17 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError, ApiError } from '@tournament/shared';
+import { AppError } from '@tournament/shared';
 import { logger } from '../logger.js';
 
 /**
  * Global error handler middleware.
- *
- * Must be registered LAST in the Express middleware chain (after all routes).
- *
- * Security rules:
- *   - Never expose stack traces to the client.
- *   - Never expose internal error messages for unexpected errors.
- *   - Always include correlationId so the caller can correlate with server logs.
- *   - Log full error details internally (with stack trace) for debugging.
+ * Returns responses in the envelope the Angular frontend expects:
+ *   { data: null, success: false, message: string, code: string, correlationId: string }
  */
 export const errorMiddleware = (
   err: Error,
@@ -23,7 +17,6 @@ export const errorMiddleware = (
   const correlationId = (res.locals['correlationId'] as string | undefined) ?? 'unknown';
 
   if (err instanceof AppError) {
-    // Known application error — log at warn level (expected failures)
     logger.warn({
       correlationId,
       code:       err.code,
@@ -32,18 +25,18 @@ export const errorMiddleware = (
       method:     req.method,
     }, err.message);
 
-    const body: ApiError = {
-      code:          err.code,
+    res.status(err.statusCode).json({
+      data:          null,
+      success:       false,
       message:       err.message,
+      code:          err.code,
       correlationId,
       ...(err.details && { details: err.details }),
-    };
-
-    res.status(err.statusCode).json(body);
+    });
     return;
   }
 
-  // Unknown / unexpected error — log full stack trace internally, return generic message
+  // Unknown error — never expose stack trace to client
   logger.error({
     correlationId,
     path:   req.path,
@@ -51,11 +44,11 @@ export const errorMiddleware = (
     stack:  err.stack,
   }, 'Unhandled error');
 
-  const body: ApiError = {
+  res.status(500).json({
+    data:          null,
+    success:       false,
+    message:       'Ha ocurrido un error inesperado',
     code:          'INTERNAL_ERROR',
-    message:       'An unexpected error occurred',
     correlationId,
-  };
-
-  res.status(500).json(body);
+  });
 };

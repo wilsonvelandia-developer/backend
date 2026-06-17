@@ -24,21 +24,41 @@ export class TournamentsService {
 
   async create(dto: CreateTournamentDto): Promise<Tournament> {
     return this.repo.create({
-      sportId:         dto.sportId,
-      name:            dto.name,
-      season:          dto.season ?? null,
-      maxSubsOverride: dto.maxSubsOverride ?? null,
+      sportId:              dto.sportId,
+      name:                 dto.name,
+      season:               dto.season ?? null,
+      maxSubsOverride:      dto.maxSubsOverride ?? null,
+      startDate:            dto.startDate ?? null,
+      registrationDeadline: dto.registrationDeadline ?? null,
+      expectedTeams:        dto.expectedTeams ?? null,
+      numGroups:            dto.numGroups ?? null,
+      category:             dto.category ?? null,
+      birthYearFrom:        dto.birthYearFrom ?? null,
+      validateBirthFrom:    dto.validateBirthFrom ?? false,
+      birthYearTo:          dto.birthYearTo ?? null,
+      validateBirthTo:      dto.validateBirthTo ?? false,
+      contactPhone:         dto.contactPhone ?? null,
+      address:              dto.address ?? null,
+      locationUrl:          dto.locationUrl ?? null,
+      imageUrl:             dto.imageUrl ?? null,
+      description:          dto.description ?? null,
+      entryFee:             dto.entryFee ?? null,
+      rulesFileUrl:         dto.rulesFileUrl ?? null,
+      invitationFileUrl:    dto.invitationFileUrl ?? null,
+      instagramUrl:         dto.instagramUrl ?? null,
+      facebookUrl:          dto.facebookUrl ?? null,
+      tiktokUrl:            dto.tiktokUrl ?? null,
+      youtubeUrl:           dto.youtubeUrl ?? null,
     });
   }
 
   async update(id: string, dto: UpdateTournamentDto): Promise<Tournament> {
-    return this.repo.update(id, {
-      ...(dto.sportId         !== undefined && { sportId:         dto.sportId }),
-      ...(dto.name            !== undefined && { name:            dto.name }),
-      ...(dto.season          !== undefined && { season:          dto.season }),
-      ...(dto.maxSubsOverride !== undefined && { maxSubsOverride: dto.maxSubsOverride }),
-      ...(dto.status          !== undefined && { status:          dto.status }),
-    });
+    // Pass through all defined fields — the repository handles the dynamic SET
+    const input: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(dto)) {
+      if (value !== undefined) input[key] = value;
+    }
+    return this.repo.update(id, input as import('./tournaments.types.js').UpdateTournamentInput);
   }
 
   async delete(id: string): Promise<void> {
@@ -76,5 +96,12 @@ export class TournamentsService {
 
   async deletePhase(tournamentId: string, phaseId: string): Promise<void> {
     return this.repo.deletePhase(tournamentId, phaseId);
+  }
+
+  /**
+   * Registers a user as staff (organizer/referee/observer) for a tournament.
+   */
+  async registerStaff(tournamentId: string, userId: string, staffRole: string): Promise<void> {
+    return this.repo.registerStaff(tournamentId, userId, staffRole);
   }
 }

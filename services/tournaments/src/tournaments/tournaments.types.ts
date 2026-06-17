@@ -3,34 +3,97 @@ import { Tournament, TournamentStatus, Phase, PhaseFormat, PhaseStatus } from '@
 // ── Tournament ────────────────────────────────────────────────────────────────
 
 export interface TournamentRow {
-  id:                 string;
-  sport_id:           string;
-  name:               string;
-  season:             string | null;
-  status:             TournamentStatus;
-  max_subs_override:  number | null;
-  created_at:         Date;
-  updated_at:         Date;
+  id:                     string;
+  sport_id:               string;
+  name:                   string;
+  season:                 string | null;
+  status:                 TournamentStatus;
+  max_subs_override:      number | null;
+  start_date:             string | null;
+  registration_deadline:  string | null;
+  expected_teams:         number | null;
+  num_groups:             number | null;
+  category:               string | null;
+  birth_year_from:        string | null;
+  validate_birth_from:    boolean;
+  birth_year_to:          string | null;
+  validate_birth_to:      boolean;
+  contact_phone:          string | null;
+  address:                string | null;
+  location_url:           string | null;
+  image_url:              string | null;
+  description:            string | null;
+  entry_fee:              string | null;
+  rules_file_url:         string | null;
+  invitation_file_url:    string | null;
+  instagram_url:          string | null;
+  facebook_url:           string | null;
+  tiktok_url:             string | null;
+  youtube_url:            string | null;
+  created_at:             Date;
+  updated_at:             Date;
 }
 
 export function mapTournamentRow(row: TournamentRow): Tournament {
   return {
-    id:               row.id,
-    sportId:          row.sport_id,
-    name:             row.name,
-    season:           row.season,
-    status:           row.status,
-    maxSubsOverride:  row.max_subs_override,
-    createdAt:        row.created_at.toISOString(),
-    updatedAt:        row.updated_at.toISOString(),
+    id:                    row.id,
+    sportId:               row.sport_id,
+    name:                  row.name,
+    season:                row.season,
+    status:                row.status,
+    maxSubsOverride:       row.max_subs_override,
+    startDate:             row.start_date,
+    registrationDeadline:  row.registration_deadline,
+    expectedTeams:         row.expected_teams,
+    numGroups:             row.num_groups,
+    category:              row.category,
+    birthYearFrom:         row.birth_year_from,
+    validateBirthFrom:     row.validate_birth_from,
+    birthYearTo:           row.birth_year_to,
+    validateBirthTo:       row.validate_birth_to,
+    contactPhone:          row.contact_phone,
+    address:               row.address,
+    locationUrl:           row.location_url,
+    imageUrl:              row.image_url,
+    description:           row.description,
+    entryFee:              row.entry_fee,
+    rulesFileUrl:          row.rules_file_url,
+    invitationFileUrl:     row.invitation_file_url,
+    instagramUrl:          row.instagram_url,
+    facebookUrl:           row.facebook_url,
+    tiktokUrl:             row.tiktok_url,
+    youtubeUrl:            row.youtube_url,
+    createdAt:             row.created_at.toISOString(),
+    updatedAt:             row.updated_at.toISOString(),
   };
 }
 
 export interface CreateTournamentInput {
-  sportId:          string;
-  name:             string;
-  season:           string | null;
-  maxSubsOverride:  number | null;
+  sportId:               string;
+  name:                  string;
+  season:                string | null;
+  maxSubsOverride:       number | null;
+  startDate:             string | null;
+  registrationDeadline:  string | null;
+  expectedTeams:         number | null;
+  numGroups:             number | null;
+  category:              string | null;
+  birthYearFrom:         string | null;
+  validateBirthFrom:     boolean;
+  birthYearTo:           string | null;
+  validateBirthTo:       boolean;
+  contactPhone:          string | null;
+  address:               string | null;
+  locationUrl:           string | null;
+  imageUrl:              string | null;
+  description:           string | null;
+  entryFee:              string | null;
+  rulesFileUrl:          string | null;
+  invitationFileUrl:     string | null;
+  instagramUrl:          string | null;
+  facebookUrl:           string | null;
+  tiktokUrl:             string | null;
+  youtubeUrl:            string | null;
 }
 
 export type UpdateTournamentInput = Partial<CreateTournamentInput> & {

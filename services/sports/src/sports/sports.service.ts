@@ -36,6 +36,7 @@ export class SportsService {
       periodsPerMatch:    dto.periodsPerMatch,
       maxSubstitutions:   dto.maxSubstitutions ?? null,
       hasRotation:        dto.hasRotation,
+      iconUrl:            dto.iconUrl ?? null,
     });
   }
 
@@ -53,6 +54,7 @@ export class SportsService {
       ...(dto.periodsPerMatch    !== undefined && { periodsPerMatch:   dto.periodsPerMatch }),
       ...(dto.maxSubstitutions   !== undefined && { maxSubstitutions:  dto.maxSubstitutions }),
       ...(dto.hasRotation        !== undefined && { hasRotation:       dto.hasRotation }),
+      ...(dto.iconUrl            !== undefined && { iconUrl:           dto.iconUrl }),
     });
   }
 

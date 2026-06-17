@@ -36,6 +36,7 @@ export interface Sport {
   periodsPerMatch: number;
   maxSubstitutions: number | null; // null = unlimited
   hasRotation: boolean;
+  iconUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,7 +45,7 @@ export interface Sport {
 // Tournaments
 // ──────────────────────────────────────────────
 
-export type TournamentStatus = 'draft' | 'active' | 'finished';
+export type TournamentStatus = 'draft' | 'active' | 'finished' | 'suspended' | 'cancelled' | 'archived';
 export type PhaseFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'groups';
 export type PhaseStatus = 'pending' | 'active' | 'finished';
 
@@ -55,6 +56,27 @@ export interface Tournament {
   season: string | null;
   status: TournamentStatus;
   maxSubsOverride: number | null;
+  startDate: string | null;
+  registrationDeadline: string | null;
+  expectedTeams: number | null;
+  numGroups: number | null;
+  category: string | null;
+  birthYearFrom: string | null;
+  validateBirthFrom: boolean;
+  birthYearTo: string | null;
+  validateBirthTo: boolean;
+  contactPhone: string | null;
+  address: string | null;
+  locationUrl: string | null;
+  imageUrl: string | null;
+  description: string | null;
+  entryFee: string | null;
+  rulesFileUrl: string | null;
+  invitationFileUrl: string | null;
+  instagramUrl: string | null;
+  facebookUrl: string | null;
+  tiktokUrl: string | null;
+  youtubeUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +100,7 @@ export interface Team {
   tournamentId: string;
   name: string;
   shortName: string | null;
+  imageUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }

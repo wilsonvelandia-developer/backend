@@ -49,7 +49,7 @@ exports.up = (pgm) => {
   pgm.addConstraint(
     'tournaments',
     'chk_tournaments_status',
-    "CHECK (status IN ('draft', 'active', 'finished'))",
+    "CHECK (status IN ('draft', 'active', 'finished', 'suspended', 'cancelled', 'archived'))",
   );
 
   pgm.createIndex('tournaments', 'sport_id');

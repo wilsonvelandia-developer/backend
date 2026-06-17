@@ -3,22 +3,18 @@ import jwt from 'jsonwebtoken';
 import { UnauthorizedError } from '@tournament/shared';
 import { config } from '../config.js';
 
-/**
- * Shape of the decoded JWT payload.
- * Extend this interface as the auth service evolves.
- */
+const COOKIE_NAME = 'auth_token';
+
 export interface JwtPayload {
-  sub: string;   // user ID
-  email: string;
-  role: string;  // e.g. 'admin' | 'organizer' | 'viewer'
-  iat: number;
-  exp: number;
+  sub:    string;
+  email:  string;
+  roles:  string[];
+  role?:  string;   // backward compat with old tokens
+  name?:  string;
+  iat:    number;
+  exp:    number;
 }
 
-/**
- * Augment Express Request to carry the authenticated user.
- * Downstream handlers access it via req.user.
- */
 declare global {
   namespace Express {
     interface Request {
@@ -30,47 +26,54 @@ declare global {
 /**
  * JWT authentication middleware.
  *
- * Expects: Authorization: Bearer <token>
+ * Token resolution order (first match wins):
+ *  1. httpOnly cookie `auth_token`  — set by /auth/login (browser clients)
+ *  2. Authorization: Bearer <token> — for Postman / API clients
  *
- * On success: attaches decoded payload to req.user and forwards X-User-ID,
- * X-User-Role headers to downstream services so they can make authorization decisions.
- *
- * On failure: throws UnauthorizedError — caught by the global error handler.
+ * On success: attaches decoded payload to req.user and forwards
+ * X-User-ID, X-User-Role headers so downstream services can authorize.
  *
  * Security notes:
- *   - Uses HS256 with a secret loaded from env (never hardcoded).
- *   - Validates expiry automatically via jsonwebtoken.
- *   - Never logs the token value.
+ *  - HS256 with secret from env — never hardcoded.
+ *  - Expiry validated by jsonwebtoken automatically.
+ *  - Token value never logged.
  */
 export const authMiddleware = (
   req: Request,
   _res: Response,
   next: NextFunction,
 ): void => {
+  // 1. Try httpOnly cookie (browser flow)
+  const cookieToken = req.cookies?.[COOKIE_NAME] as string | undefined;
+
+  // 2. Try Authorization header (Postman / API clients)
   const authHeader = req.headers['authorization'];
+  const headerToken =
+    authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.slice(7)
+      : undefined;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(new UnauthorizedError('Missing or malformed Authorization header'));
+  const token = cookieToken ?? headerToken;
+
+  if (!token) {
+    return next(new UnauthorizedError('Autenticación requerida'));
   }
-
-  const token = authHeader.slice(7); // strip "Bearer "
 
   try {
     const payload = jwt.verify(token, config.jwt.secret) as JwtPayload;
     req.user = payload;
 
-    // Forward user context to downstream microservices via internal headers.
-    // Services trust these headers only on requests from the gateway (internal network).
-    req.headers['x-user-id']   = payload.sub;
-    req.headers['x-user-role'] = payload.role;
+    // Forward user context to downstream microservices
+    req.headers['x-user-id']    = payload.sub;
+    req.headers['x-user-roles'] = JSON.stringify(payload.roles ?? [payload.role ?? 'viewer']);
 
     next();
   } catch (err) {
     if (err instanceof jwt.TokenExpiredError) {
-      return next(new UnauthorizedError('Token has expired'));
+      return next(new UnauthorizedError('La sesión ha expirado'));
     }
     if (err instanceof jwt.JsonWebTokenError) {
-      return next(new UnauthorizedError('Invalid token'));
+      return next(new UnauthorizedError('Token inválido'));
     }
     next(err);
   }

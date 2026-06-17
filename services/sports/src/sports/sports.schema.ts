@@ -58,6 +58,13 @@ const sportBaseSchema = z.object({
     .default(null),
 
   hasRotation: z.boolean().default(false),
+
+  iconUrl: z
+    .string()
+    .max(500)
+    .nullable()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : null))
+    .default(null),
 });
 
 /** Full create schema — all required fields + cross-field validations. */

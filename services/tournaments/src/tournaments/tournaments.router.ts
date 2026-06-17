@@ -60,6 +60,13 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     try {
       const dto = createTournamentSchema.parse(req.body);
       const tournament = await service.create(dto);
+
+      // Auto-register the creator as organizer of the tournament
+      const userId = req.headers['x-user-id'] as string | undefined;
+      if (userId) {
+        await service.registerStaff(tournament.id, userId, 'organizer');
+      }
+
       res.status(201).json({ data: tournament });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid tournament data', parseZodError(err)));

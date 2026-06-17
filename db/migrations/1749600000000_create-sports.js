@@ -67,11 +67,23 @@ exports.up = (pgm) => {
       type: 'integer',
       comment: 'Max substitutions per team per match/set. NULL means unlimited',
     },
+    icon: {
+      type: 'varchar(10)',
+      notNull: true,
+      default: '&#x1F947;',
+      comment: 'Icon for sport',
+    },
     has_rotation: {
       type: 'boolean',
       notNull: true,
       default: false,
       comment: 'True only for volleyball — enforces court rotation rules',
+    },
+    is_active: {
+      type: 'boolean',
+      notNull: true,
+      default: false,
+      comment: 'True for all sports',
     },
     created_at: {
       type: 'timestamptz',

@@ -69,8 +69,8 @@ export class SportsRepository {
         `INSERT INTO sports (
           name, slug, players_per_team, has_sets, sets_to_win,
           points_per_set, decisive_set_points, win_margin,
-          periods_per_match, max_substitutions, has_rotation
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+          periods_per_match, max_substitutions, has_rotation, icon_url
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
         RETURNING *`,
         [
           input.name,
@@ -84,6 +84,7 @@ export class SportsRepository {
           input.periodsPerMatch,
           input.maxSubstitutions,
           input.hasRotation,
+          input.iconUrl,
         ],
       );
       return mapSportRow(result.rows[0]);
@@ -122,6 +123,7 @@ export class SportsRepository {
       periodsPerMatch:    'periods_per_match',
       maxSubstitutions:   'max_substitutions',
       hasRotation:        'has_rotation',
+      iconUrl:            'icon_url',
     };
 
     for (const [key, column] of Object.entries(columnMap) as [keyof UpdateSportInput, string][]) {

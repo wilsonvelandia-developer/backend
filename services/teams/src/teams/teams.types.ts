@@ -7,6 +7,7 @@ export interface TeamRow {
   tournament_id: string;
   name:          string;
   short_name:    string | null;
+  image_url:     string | null;
   created_at:    Date;
   updated_at:    Date;
 }
@@ -17,6 +18,7 @@ export function mapTeamRow(row: TeamRow): Team {
     tournamentId: row.tournament_id,
     name:         row.name,
     shortName:    row.short_name,
+    imageUrl:     row.image_url,
     createdAt:    row.created_at.toISOString(),
     updatedAt:    row.updated_at.toISOString(),
   };
