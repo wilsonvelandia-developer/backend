@@ -104,4 +104,14 @@ export class TournamentsService {
   async registerStaff(tournamentId: string, userId: string, staffRole: string): Promise<void> {
     return this.repo.registerStaff(tournamentId, userId, staffRole);
   }
+
+  // ── Group draw ────────────────────────────────────────────────────────────
+
+  async getGroups(tournamentId: string): Promise<Array<{ teamId: string; teamName: string; groupName: string; drawOrder: number }>> {
+    return this.repo.getGroups(tournamentId);
+  }
+
+  async saveGroupDraw(tournamentId: string, assignments: Array<{ teamId: string; groupName: string; drawOrder: number }>): Promise<void> {
+    return this.repo.saveGroupDraw(tournamentId, assignments);
+  }
 }

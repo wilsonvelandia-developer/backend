@@ -156,5 +156,32 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     }
   });
 
+  // ── Group Draw endpoints ──────────────────────────────────────────────────
+
+  // GET /tournaments/:id/groups — get current group assignment
+  router.get('/:id/groups', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const groups = await service.getGroups(id);
+      res.json({ data: groups });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/groups — save group draw (array of { teamId, groupName, drawOrder })
+  router.post('/:id/groups', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const assignments = req.body as Array<{ teamId: string; groupName: string; drawOrder: number }>;
+      await service.saveGroupDraw(id, assignments);
+      const groups = await service.getGroups(id);
+      res.status(201).json({ data: groups });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

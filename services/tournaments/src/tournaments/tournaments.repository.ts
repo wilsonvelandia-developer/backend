@@ -262,4 +262,49 @@ export class TournamentsRepository {
       [userId, tournamentId, staffRole],
     );
   }
+
+  // ── Group Draw ────────────────────────────────────────────────────────────
+
+  async getGroups(tournamentId: string): Promise<Array<{ teamId: string; teamName: string; groupName: string; drawOrder: number }>> {
+    const result = await this.pool.query<{ team_id: string; team_name: string; group_name: string; draw_order: number }>(
+      `SELECT tg.team_id, t.name AS team_name, tg.group_name, tg.draw_order
+       FROM team_groups tg
+       JOIN teams t ON t.id = tg.team_id
+       WHERE tg.tournament_id = $1
+       ORDER BY tg.group_name, tg.draw_order`,
+      [tournamentId],
+    );
+    return result.rows.map((r) => ({
+      teamId:    r.team_id,
+      teamName:  r.team_name,
+      groupName: r.group_name,
+      drawOrder: r.draw_order,
+    }));
+  }
+
+  async saveGroupDraw(tournamentId: string, assignments: Array<{ teamId: string; groupName: string; drawOrder: number }>): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Delete existing draw for this tournament
+      await client.query(`DELETE FROM team_groups WHERE tournament_id = $1`, [tournamentId]);
+
+      // Insert new assignments
+      for (const a of assignments) {
+        await client.query(
+          `INSERT INTO team_groups (tournament_id, team_id, group_name, draw_order)
+           VALUES ($1, $2, $3, $4)`,
+          [tournamentId, a.teamId, a.groupName, a.drawOrder],
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
 }
