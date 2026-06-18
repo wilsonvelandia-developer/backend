@@ -407,11 +407,11 @@ export class TournamentsRepository {
         : venueName;
 
       const insertResult = await this.pool.query(
-        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at)
-         VALUES ($1, $2, $3, $4) RETURNING id, phase_id, home_team_id, away_team_id, scheduled_at, status`,
-        [phaseId, match.homeTeamId, match.awayTeamId, scheduledAt],
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at, venue)
+         VALUES ($1, $2, $3, $4, $5) RETURNING id, phase_id, home_team_id, away_team_id, scheduled_at, status, venue`,
+        [phaseId, match.homeTeamId, match.awayTeamId, scheduledAt, matchVenue],
       );
-      createdMatches.push({ ...insertResult.rows[0], groupName: match.groupName, venue: matchVenue });
+      createdMatches.push({ ...insertResult.rows[0], groupName: match.groupName });
 
       venueSlot++;
       if (venueSlot >= numVenues) {

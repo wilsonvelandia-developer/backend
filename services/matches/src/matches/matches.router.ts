@@ -185,5 +185,45 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  // ── PATCH /matches/:id/schedule — update date/time/venue ───────────────────
+  router.patch('/:id/schedule', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const { scheduledAt, venue } = req.body as { scheduledAt?: string; venue?: string };
+
+      const fields: string[] = [];
+      const values: unknown[] = [];
+      let idx = 1;
+
+      if (scheduledAt !== undefined) { fields.push(`scheduled_at = $${idx++}`); values.push(scheduledAt); }
+      if (venue !== undefined)       { fields.push(`venue = $${idx++}`);        values.push(venue); }
+
+      if (fields.length === 0) {
+        res.status(400).json({ data: null, success: false, message: 'No fields to update' });
+        return;
+      }
+
+      fields.push(`updated_at = NOW()`);
+      values.push(id);
+
+      // Direct pool access for this simple update
+      const { Pool } = await import('pg');
+      const pool = new Pool({ connectionString: process.env['DATABASE_URL'] });
+      const result = await pool.query(
+        `UPDATE matches SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+        values,
+      );
+      await pool.end();
+
+      if (result.rowCount === 0) {
+        res.status(404).json({ data: null, success: false, message: 'Match not found' });
+        return;
+      }
+      res.json({ data: result.rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
