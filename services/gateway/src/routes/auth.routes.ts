@@ -36,12 +36,23 @@ const loginSchema = z.object({
 });
 
 const registerSchema = z.object({
-  email:          z.string().email('Email inválido'),
-  password:       z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
-  name:           z.string().min(2).max(200),
-  documentNumber: z.string().max(30).nullable().optional(),
-  phone:          z.string().max(30).nullable().optional(),
-  roles:          z.array(z.string().min(2).max(30)).min(1, 'Al menos un rol es requerido'),
+  email:            z.string().email('Email inválido'),
+  password:         z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+  firstName:        z.string().min(1).max(100),
+  secondName:       z.string().max(100).nullable().optional(),
+  firstLastName:    z.string().min(1).max(100),
+  secondLastName:   z.string().max(100).nullable().optional(),
+  documentType:     z.string().max(10).nullable().optional(),
+  documentNumber:   z.string().max(30).nullable().optional(),
+  birthDate:        z.string().max(10).nullable().optional(),
+  phone:            z.string().max(30).nullable().optional(),
+  photoUrl:         z.string().max(500).nullable().optional(),
+  documentFrontUrl: z.string().max(500).nullable().optional(),
+  documentBackUrl:  z.string().max(500).nullable().optional(),
+  epsFileUrl:       z.string().max(500).nullable().optional(),
+  roles:            z.array(z.string().min(2).max(30)).min(1, 'Al menos un rol es requerido'),
+  // Legacy — kept for backward compatibility
+  name:             z.string().min(2).max(200).optional(),
 });
 
 function parseZodError(err: ZodError): Record<string, string> {
@@ -193,11 +204,24 @@ router.post('/register', async (req: Request, res: Response, next: NextFunction)
     // Hash password
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    // Compute display name from parts (or use legacy 'name' field)
+    const displayName = dto.name
+      ?? [dto.firstName, dto.secondName, dto.firstLastName, dto.secondLastName].filter(Boolean).join(' ');
+
     // Create user
     const userResult = await pool.query<{ id: string }>(
-      `INSERT INTO users (email, password_hash, name, document_number, phone)
-       VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-      [dto.email, passwordHash, dto.name, dto.documentNumber ?? null, dto.phone ?? null],
+      `INSERT INTO users (email, password_hash, name, first_name, second_name, first_last_name, second_last_name,
+                          document_type, document_number, birth_date, phone, photo_url,
+                          document_front_url, document_back_url, eps_file_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+      [
+        dto.email, passwordHash, displayName,
+        dto.firstName ?? null, dto.secondName ?? null,
+        dto.firstLastName ?? null, dto.secondLastName ?? null,
+        dto.documentType ?? null, dto.documentNumber ?? null,
+        dto.birthDate ?? null, dto.phone ?? null, dto.photoUrl ?? null,
+        dto.documentFrontUrl ?? null, dto.documentBackUrl ?? null, dto.epsFileUrl ?? null,
+      ],
     );
     const userId = userResult.rows[0].id;
 

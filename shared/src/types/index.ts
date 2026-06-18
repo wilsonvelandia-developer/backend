@@ -83,6 +83,11 @@ export interface Tournament {
   firstMatchTime: string;
   numVenues: number;
   venueName: string | null;
+  // Standings configuration
+  pointsConfig: { win: number; draw: number; loss: number };
+  tiebreakerCriteria: string[];
+  initialFairPlayScore: number;
+  teamsPerGroupQualify: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -103,10 +108,20 @@ export interface Phase {
 
 export interface Team {
   id: string;
-  tournamentId: string;
+  tournamentId: string | null;
   name: string;
   shortName: string | null;
   imageUrl: string | null;
+  phone: string | null;
+  email: string | null;
+  instagramUrl: string | null;
+  facebookUrl: string | null;
+  tiktokUrl: string | null;
+  youtubeUrl: string | null;
+  status: string;
+  colorPrimary: string | null;
+  colorSecondary: string | null;
+  variant: string | null;
   createdAt: string;
   updatedAt: string;
 }

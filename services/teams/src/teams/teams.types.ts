@@ -3,34 +3,78 @@ import { Team, Player } from '@tournament/shared';
 // ── Team ──────────────────────────────────────────────────────────────────────
 
 export interface TeamRow {
-  id:            string;
-  tournament_id: string;
-  name:          string;
-  short_name:    string | null;
-  image_url:     string | null;
-  created_at:    Date;
-  updated_at:    Date;
+  id:              string;
+  tournament_id:   string | null;
+  name:            string;
+  short_name:      string | null;
+  image_url:       string | null;
+  phone:           string | null;
+  email:           string | null;
+  instagram_url:   string | null;
+  facebook_url:    string | null;
+  tiktok_url:      string | null;
+  youtube_url:     string | null;
+  status:          string;
+  color_primary:   string | null;
+  color_secondary: string | null;
+  variant:         string | null;
+  created_at:      Date;
+  updated_at:      Date;
 }
 
 export function mapTeamRow(row: TeamRow): Team {
   return {
-    id:           row.id,
-    tournamentId: row.tournament_id,
-    name:         row.name,
-    shortName:    row.short_name,
-    imageUrl:     row.image_url,
-    createdAt:    row.created_at.toISOString(),
-    updatedAt:    row.updated_at.toISOString(),
+    id:             row.id,
+    tournamentId:   row.tournament_id,
+    name:           row.name,
+    shortName:      row.short_name,
+    imageUrl:       row.image_url,
+    phone:          row.phone,
+    email:          row.email,
+    instagramUrl:   row.instagram_url,
+    facebookUrl:    row.facebook_url,
+    tiktokUrl:      row.tiktok_url,
+    youtubeUrl:     row.youtube_url,
+    status:         row.status,
+    colorPrimary:   row.color_primary,
+    colorSecondary: row.color_secondary,
+    variant:        row.variant,
+    createdAt:      row.created_at.toISOString(),
+    updatedAt:      row.updated_at.toISOString(),
   };
 }
 
 export interface CreateTeamInput {
-  tournamentId: string;
+  tournamentId: string | null;
   name:         string;
   shortName:    string | null;
+  imageUrl?:    string | null;
+  phone?:       string | null;
+  email?:       string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  tiktokUrl?:   string | null;
+  youtubeUrl?:  string | null;
+  colorPrimary?: string | null;
+  colorSecondary?: string | null;
+  variant?:     string | null;
 }
 
-export type UpdateTeamInput = Partial<Omit<CreateTeamInput, 'tournamentId'>>;
+export interface UpdateTeamInput {
+  name?:           string;
+  shortName?:      string | null;
+  imageUrl?:       string | null;
+  phone?:          string | null;
+  email?:          string | null;
+  instagramUrl?:   string | null;
+  facebookUrl?:    string | null;
+  tiktokUrl?:      string | null;
+  youtubeUrl?:     string | null;
+  status?:         string;
+  colorPrimary?:   string | null;
+  colorSecondary?: string | null;
+  variant?:        string | null;
+}
 
 // ── Player ────────────────────────────────────────────────────────────────────
 

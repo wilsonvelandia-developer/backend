@@ -47,6 +47,6 @@ export const config = {
 
   rateLimit: {
     windowMs:  15 * 60 * 1000, // 15 minutes
-    max:       200,             // requests per window per IP
+    max:       1000,            // requests per window per IP (high for dev)
   },
 } as const;

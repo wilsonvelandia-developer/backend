@@ -24,17 +24,28 @@ export class TeamsService {
 
   async create(dto: CreateTeamDto): Promise<Team> {
     return this.repo.create({
-      tournamentId: dto.tournamentId,
-      name:         dto.name,
-      shortName:    dto.shortName ?? null,
+      tournamentId:   dto.tournamentId ?? null,
+      name:           dto.name,
+      shortName:      dto.shortName ?? null,
+      imageUrl:       dto.imageUrl ?? null,
+      phone:          dto.phone ?? null,
+      email:          dto.email ?? null,
+      instagramUrl:   dto.instagramUrl ?? null,
+      facebookUrl:    dto.facebookUrl ?? null,
+      tiktokUrl:      dto.tiktokUrl ?? null,
+      youtubeUrl:     dto.youtubeUrl ?? null,
+      colorPrimary:   dto.colorPrimary ?? null,
+      colorSecondary: dto.colorSecondary ?? null,
+      variant:        dto.variant ?? null,
     });
   }
 
   async update(id: string, dto: UpdateTeamDto): Promise<Team> {
-    return this.repo.update(id, {
-      ...(dto.name      !== undefined && { name:      dto.name }),
-      ...(dto.shortName !== undefined && { shortName: dto.shortName }),
-    });
+    const input: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(dto)) {
+      if (value !== undefined) input[key] = value;
+    }
+    return this.repo.update(id, input as import('./teams.types.js').UpdateTeamInput);
   }
 
   async delete(id: string): Promise<void> {

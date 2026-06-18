@@ -46,6 +46,19 @@ const tournamentBaseSchema = z.object({
   facebookUrl:  optionalUrl(),
   tiktokUrl:    optionalUrl(),
   youtubeUrl:   optionalUrl(),
+
+  // Fixture configuration
+  matchDurationMinutes: z.number().int().min(30).max(300).default(90),
+  matchesPerDay:        z.number().int().min(1).max(20).default(6),
+  firstMatchTime:       z.string().max(8).default('08:00'),
+  numVenues:            z.number().int().min(1).max(10).default(1),
+  venueName:            optionalStr(200),
+
+  // Standings configuration
+  pointsConfig:         z.object({ win: z.number().int().min(0), draw: z.number().int().min(0), loss: z.number().int().min(0) }).default({ win: 3, draw: 1, loss: 0 }),
+  tiebreakerCriteria:   z.array(z.string().max(50)).default(['points', 'goal_difference', 'goals_for', 'head_to_head', 'fair_play', 'draw']),
+  initialFairPlayScore: z.number().int().default(1000),
+  teamsPerGroupQualify: z.number().int().min(1).max(10).default(2),
 });
 
 export const createTournamentSchema = tournamentBaseSchema;

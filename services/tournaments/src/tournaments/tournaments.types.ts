@@ -35,6 +35,10 @@ export interface TournamentRow {
   first_match_time:       string;
   num_venues:             number;
   venue_name:             string | null;
+  points_config:          { win: number; draw: number; loss: number };
+  tiebreaker_criteria:    string[];
+  initial_fair_play_score: number;
+  teams_per_group_qualify: number;
   created_at:             Date;
   updated_at:             Date;
 }
@@ -73,6 +77,10 @@ export function mapTournamentRow(row: TournamentRow): Tournament {
     firstMatchTime:        row.first_match_time,
     numVenues:             row.num_venues,
     venueName:             row.venue_name,
+    pointsConfig:          row.points_config,
+    tiebreakerCriteria:    row.tiebreaker_criteria,
+    initialFairPlayScore:  row.initial_fair_play_score,
+    teamsPerGroupQualify:  row.teams_per_group_qualify,
     createdAt:             row.created_at.toISOString(),
     updatedAt:             row.updated_at.toISOString(),
   };
@@ -109,6 +117,10 @@ export interface CreateTournamentInput {
   firstMatchTime:        string;
   numVenues:             number;
   venueName:             string | null;
+  pointsConfig?:         { win: number; draw: number; loss: number };
+  tiebreakerCriteria?:   string[];
+  initialFairPlayScore?: number;
+  teamsPerGroupQualify?: number;
 }
 
 export type UpdateTournamentInput = Partial<CreateTournamentInput> & {

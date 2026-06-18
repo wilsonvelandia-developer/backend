@@ -2,16 +2,30 @@ import { z } from 'zod';
 
 // ── Team schemas ──────────────────────────────────────────────────────────────
 
+const optionalUrl = () =>
+  z.string().max(500).nullable().transform((v) => (v && v.trim() ? v.trim() : null)).default(null);
+
 const teamBaseSchema = z.object({
-  tournamentId: z.string().uuid('tournamentId must be a valid UUID'),
-  name:         z.string().trim().min(2).max(200),
-  shortName:    z.string().trim().min(1).max(10).nullable().default(null),
+  tournamentId:   z.string().uuid('tournamentId must be a valid UUID').nullable().default(null),
+  name:           z.string().trim().min(2).max(200),
+  shortName:      z.string().trim().min(1).max(10).nullable().default(null),
+  imageUrl:       optionalUrl(),
+  phone:          z.string().trim().max(30).nullable().default(null),
+  email:          z.string().max(255).nullable().default(null),
+  instagramUrl:   optionalUrl(),
+  facebookUrl:    optionalUrl(),
+  tiktokUrl:      optionalUrl(),
+  youtubeUrl:     optionalUrl(),
+  colorPrimary:   z.string().max(7).nullable().default(null),
+  colorSecondary: z.string().max(7).nullable().default(null),
+  variant:        z.string().trim().max(50).nullable().default(null),
 });
 
 export const createTeamSchema = teamBaseSchema;
 
 export const updateTeamSchema = teamBaseSchema
   .omit({ tournamentId: true })
+  .extend({ status: z.enum(['active', 'inactive', 'suspended']).optional() })
   .partial()
   .refine(
     (data) => Object.keys(data).length > 0,

@@ -49,11 +49,15 @@ export class TournamentsService {
       facebookUrl:          dto.facebookUrl ?? null,
       tiktokUrl:            dto.tiktokUrl ?? null,
       youtubeUrl:           dto.youtubeUrl ?? null,
-      matchDurationMinutes: 90,
-      matchesPerDay:        6,
-      firstMatchTime:       '08:00',
-      numVenues:            1,
-      venueName:            null,
+      matchDurationMinutes: dto.matchDurationMinutes ?? 90,
+      matchesPerDay:        dto.matchesPerDay ?? 6,
+      firstMatchTime:       dto.firstMatchTime ?? '08:00',
+      numVenues:            dto.numVenues ?? 1,
+      venueName:            dto.venueName ?? null,
+      pointsConfig:         dto.pointsConfig,
+      tiebreakerCriteria:   dto.tiebreakerCriteria,
+      initialFairPlayScore: dto.initialFairPlayScore,
+      teamsPerGroupQualify: dto.teamsPerGroupQualify,
     });
   }
 
@@ -136,5 +140,25 @@ export class TournamentsService {
     },
   ): Promise<unknown[]> {
     return this.repo.generateGroupFixture(tournamentId, config);
+  }
+
+  // ── Cups ──────────────────────────────────────────────────────────────────
+
+  async getCups(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getCups(tournamentId);
+  }
+
+  async saveCups(tournamentId: string, cups: Array<{ name: string; orderIndex: number; groupPositionsFrom: number; groupPositionsTo: number; hasSemifinals: boolean; hasThirdPlace: boolean }>): Promise<void> {
+    return this.repo.saveCups(tournamentId, cups);
+  }
+
+  // ── Sanction Types ────────────────────────────────────────────────────────
+
+  async getSanctionTypes(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getSanctionTypes(tournamentId);
+  }
+
+  async saveSanctionTypes(tournamentId: string, types: Array<{ name: string; code: string; pointsEffect: number; monetaryValue: number; color: string; icon: string }>): Promise<void> {
+    return this.repo.saveSanctionTypes(tournamentId, types);
   }
 }

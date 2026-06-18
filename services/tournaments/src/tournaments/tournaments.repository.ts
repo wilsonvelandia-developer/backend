@@ -68,9 +68,11 @@ export class TournamentsRepository {
         category, birth_year_from, validate_birth_from, birth_year_to, validate_birth_to,
         contact_phone, address, location_url,
         image_url, description, entry_fee, rules_file_url, invitation_file_url,
-        instagram_url, facebook_url, tiktok_url, youtube_url
+        instagram_url, facebook_url, tiktok_url, youtube_url,
+        match_duration_minutes, matches_per_day, first_match_time, num_venues, venue_name,
+        points_config, tiebreaker_criteria, initial_fair_play_score, teams_per_group_qualify
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34
       ) RETURNING *`,
       [
         input.sportId, input.name, input.season, input.maxSubsOverride,
@@ -79,6 +81,11 @@ export class TournamentsRepository {
         input.contactPhone, input.address, input.locationUrl,
         input.imageUrl, input.description, input.entryFee, input.rulesFileUrl, input.invitationFileUrl,
         input.instagramUrl, input.facebookUrl, input.tiktokUrl, input.youtubeUrl,
+        input.matchDurationMinutes, input.matchesPerDay, input.firstMatchTime, input.numVenues, input.venueName,
+        JSON.stringify(input.pointsConfig ?? { win: 3, draw: 1, loss: 0 }),
+        JSON.stringify(input.tiebreakerCriteria ?? ['points', 'goal_difference', 'goals_for', 'head_to_head', 'fair_play', 'draw']),
+        input.initialFairPlayScore ?? 1000,
+        input.teamsPerGroupQualify ?? 2,
       ],
     );
     return mapTournamentRow(result.rows[0]);
@@ -121,12 +128,22 @@ export class TournamentsRepository {
       firstMatchTime:       'first_match_time',
       numVenues:            'num_venues',
       venueName:            'venue_name',
+      pointsConfig:         'points_config',
+      tiebreakerCriteria:   'tiebreaker_criteria',
+      initialFairPlayScore: 'initial_fair_play_score',
+      teamsPerGroupQualify: 'teams_per_group_qualify',
     };
 
     for (const [key, column] of Object.entries(columnMap)) {
       if (key in input && (input as Record<string, unknown>)[key] !== undefined) {
+        const value = (input as Record<string, unknown>)[key];
         fields.push(`${column} = $${idx++}`);
-        values.push((input as Record<string, unknown>)[key]);
+        // JSONB fields must be stringified for pg driver
+        if (key === 'pointsConfig' || key === 'tiebreakerCriteria') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value);
+        }
       }
     }
 
@@ -468,5 +485,66 @@ export class TournamentsRepository {
     }
 
     return allMatches;
+  }
+
+  // ── Cups ──────────────────────────────────────────────────────────────────
+
+  async getCups(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT id, name, order_index AS "orderIndex",
+              group_positions_from AS "groupPositionsFrom",
+              group_positions_to AS "groupPositionsTo",
+              has_semifinals AS "hasSemifinals",
+              has_third_place AS "hasThirdPlace"
+       FROM tournament_cups WHERE tournament_id = $1 ORDER BY order_index`,
+      [tournamentId],
+    );
+    return result.rows;
+  }
+
+  async saveCups(tournamentId: string, cups: Array<{ name: string; orderIndex: number; groupPositionsFrom: number; groupPositionsTo: number; hasSemifinals: boolean; hasThirdPlace: boolean }>): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM tournament_cups WHERE tournament_id = $1`, [tournamentId]);
+      for (const cup of cups) {
+        await client.query(
+          `INSERT INTO tournament_cups (tournament_id, name, order_index, group_positions_from, group_positions_to, has_semifinals, has_third_place)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [tournamentId, cup.name, cup.orderIndex, cup.groupPositionsFrom, cup.groupPositionsTo, cup.hasSemifinals, cup.hasThirdPlace],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
+  }
+
+  // ── Sanction Types ────────────────────────────────────────────────────────
+
+  async getSanctionTypes(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT id, name, code, points_effect AS "pointsEffect",
+              monetary_value AS "monetaryValue", color, icon
+       FROM sanction_types WHERE tournament_id = $1 ORDER BY name`,
+      [tournamentId],
+    );
+    return result.rows;
+  }
+
+  async saveSanctionTypes(tournamentId: string, types: Array<{ name: string; code: string; pointsEffect: number; monetaryValue: number; color: string; icon: string }>): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(`DELETE FROM sanction_types WHERE tournament_id = $1`, [tournamentId]);
+      for (const t of types) {
+        await client.query(
+          `INSERT INTO sanction_types (tournament_id, name, code, points_effect, monetary_value, color, icon)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [tournamentId, t.name, t.code, t.pointsEffect, t.monetaryValue, t.color, t.icon],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) { await client.query('ROLLBACK'); throw err; }
+    finally { client.release(); }
   }
 }

@@ -158,7 +158,7 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
 
   // ── Group Draw endpoints ──────────────────────────────────────────────────
 
-  // GET /tournaments/:id/groups — get current group assignment
+  // GET /tournaments/:id/groups — get group draw
   router.get('/:id/groups', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = tournamentIdSchema.parse(req.params);
@@ -199,6 +199,46 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     } catch (err) {
       next(err);
     }
+  });
+
+  // ── Cups CRUD ─────────────────────────────────────────────────────────────
+
+  router.get('/:id/cups', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getCups(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/cups', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const cups = req.body as Array<{ name: string; orderIndex: number; groupPositionsFrom: number; groupPositionsTo: number; hasSemifinals: boolean; hasThirdPlace: boolean }>;
+      await service.saveCups(id, cups);
+      const result = await service.getCups(id);
+      res.status(201).json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  // ── Sanction Types CRUD ───────────────────────────────────────────────────
+
+  router.get('/:id/sanction-types', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getSanctionTypes(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/sanction-types', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const types = req.body as Array<{ name: string; code: string; pointsEffect: number; monetaryValue: number; color: string; icon: string }>;
+      await service.saveSanctionTypes(id, types);
+      const result = await service.getSanctionTypes(id);
+      res.status(201).json({ data: result });
+    } catch (err) { next(err); }
   });
 
   return router;

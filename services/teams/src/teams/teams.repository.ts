@@ -45,21 +45,32 @@ export class TeamsRepository {
   }
 
   async create(input: CreateTeamInput): Promise<Team> {
-    // Verify tournament exists
-    const tournamentCheck = await this.pool.query(
-      `SELECT id FROM tournaments WHERE id = $1`,
-      [input.tournamentId],
-    );
-    if (tournamentCheck.rowCount === 0) {
-      throw new NotFoundError('Tournament', input.tournamentId);
+    // Verify tournament exists if provided
+    if (input.tournamentId) {
+      const tournamentCheck = await this.pool.query(
+        `SELECT id FROM tournaments WHERE id = $1`,
+        [input.tournamentId],
+      );
+      if (tournamentCheck.rowCount === 0) {
+        throw new NotFoundError('Tournament', input.tournamentId);
+      }
     }
 
     try {
       const result = await this.pool.query<TeamRow>(
-        `INSERT INTO teams (tournament_id, name, short_name)
-         VALUES ($1, $2, $3)
+        `INSERT INTO teams (tournament_id, name, short_name, image_url, phone, email,
+                            instagram_url, facebook_url, tiktok_url, youtube_url,
+                            color_primary, color_secondary, variant)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
-        [input.tournamentId, input.name, input.shortName],
+        [
+          input.tournamentId, input.name, input.shortName,
+          input.imageUrl ?? null, input.phone ?? null, input.email ?? null,
+          input.instagramUrl ?? null, input.facebookUrl ?? null,
+          input.tiktokUrl ?? null, input.youtubeUrl ?? null,
+          input.colorPrimary ?? null, input.colorSecondary ?? null,
+          input.variant ?? null,
+        ],
       );
       return mapTeamRow(result.rows[0]);
     } catch (err: unknown) {
@@ -75,8 +86,28 @@ export class TeamsRepository {
     const values: unknown[] = [];
     let idx = 1;
 
-    if (input.name      !== undefined) { fields.push(`name = $${idx++}`);       values.push(input.name); }
-    if (input.shortName !== undefined) { fields.push(`short_name = $${idx++}`); values.push(input.shortName); }
+    const columnMap: Record<string, string> = {
+      name:           'name',
+      shortName:      'short_name',
+      imageUrl:       'image_url',
+      phone:          'phone',
+      email:          'email',
+      instagramUrl:   'instagram_url',
+      facebookUrl:    'facebook_url',
+      tiktokUrl:      'tiktok_url',
+      youtubeUrl:     'youtube_url',
+      status:         'status',
+      colorPrimary:   'color_primary',
+      colorSecondary: 'color_secondary',
+      variant:        'variant',
+    };
+
+    for (const [key, column] of Object.entries(columnMap)) {
+      if (key in input && (input as Record<string, unknown>)[key] !== undefined) {
+        fields.push(`${column} = $${idx++}`);
+        values.push((input as Record<string, unknown>)[key]);
+      }
+    }
 
     if (fields.length === 0) throw new BusinessRuleError('No fields to update');
 
