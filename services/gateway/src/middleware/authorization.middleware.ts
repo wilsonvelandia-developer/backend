@@ -37,9 +37,19 @@ interface JwtUser {
 }
 
 function getUserFromReq(req: Request): JwtUser | null {
-  const user = req.user as unknown as { sub?: string; roles?: string[] } | undefined;
-  if (!user?.sub || !user?.roles) return null;
-  return { sub: user.sub, roles: user.roles };
+  const user = req.user as unknown as { sub?: string; roles?: string[]; role?: string } | undefined;
+  if (!user?.sub) return null;
+
+  // Handle both new format (roles: string[]) and old format (role: string)
+  let roles: string[] = [];
+  if (Array.isArray(user.roles) && user.roles.length > 0) {
+    roles = user.roles;
+  } else if (user.role) {
+    roles = [user.role];
+  }
+
+  if (roles.length === 0) return null;
+  return { sub: user.sub, roles };
 }
 
 function isAdmin(roles: string[]): boolean {
