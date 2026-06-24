@@ -4,11 +4,13 @@ import {
   CreateMatchDto, UpdatePeriodScoreDto,
   RegisterLineupDto, RotateTeamDto,
   SubstitutionDto, ListMatchesQuery,
+  CreateSanctionDto, CreateMatchEventDto, CreateScorerDto,
 } from './matches.schema.js';
-import { MatchDetail } from './matches.types.js';
+import { MatchDetail, MatchSanction, MatchEvent, MatchScorer } from './matches.types.js';
 
 /**
- * Matches service — orchestrates match lifecycle, scoring, rotations and substitutions.
+ * Matches service — orchestrates match lifecycle, scoring, rotations, substitutions,
+ * sanctions, events, and scorers.
  */
 export class MatchesService {
   constructor(private readonly repo: MatchesRepository) {}
@@ -71,5 +73,35 @@ export class MatchesService {
 
   async getSubstitutions(matchId: string): Promise<Substitution[]> {
     return this.repo.getSubstitutions(matchId);
+  }
+
+  // ── Sanctions ─────────────────────────────────────────────────────────────
+
+  async addSanction(matchId: string, dto: CreateSanctionDto): Promise<MatchSanction> {
+    return this.repo.addSanction(matchId, dto);
+  }
+
+  async getSanctions(matchId: string): Promise<MatchSanction[]> {
+    return this.repo.getSanctions(matchId);
+  }
+
+  // ── Match Events ──────────────────────────────────────────────────────────
+
+  async addEvent(matchId: string, dto: CreateMatchEventDto): Promise<MatchEvent> {
+    return this.repo.addEvent(matchId, dto);
+  }
+
+  async getEvents(matchId: string): Promise<MatchEvent[]> {
+    return this.repo.getEvents(matchId);
+  }
+
+  // ── Match Scorers ─────────────────────────────────────────────────────────
+
+  async addScorer(matchId: string, dto: CreateScorerDto): Promise<MatchScorer> {
+    return this.repo.addScorer(matchId, dto);
+  }
+
+  async getScorers(matchId: string): Promise<MatchScorer[]> {
+    return this.repo.getScorers(matchId);
   }
 }

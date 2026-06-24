@@ -6,13 +6,18 @@ import {
   MatchPeriodRow, mapPeriodRow,
   RotationRow, mapRotationRow,
   SubstitutionRow, mapSubstitutionRow,
+  MatchSanctionRow, mapSanctionRow,
+  MatchEventRow, mapEventRow,
+  MatchScorerRow, mapScorerRow,
   SportRules, MatchDetail,
+  MatchSanction, MatchEvent, MatchScorer,
 } from './matches.types.js';
 import { SportRulesEngine } from './sport-rules.engine.js';
 import {
   CreateMatchDto, UpdatePeriodScoreDto,
   RegisterLineupDto, RotateTeamDto,
   SubstitutionDto, ListMatchesQuery,
+  CreateSanctionDto, CreateMatchEventDto, CreateScorerDto,
 } from './matches.schema.js';
 
 /**
@@ -491,5 +496,148 @@ export class MatchesRepository {
       throw new BusinessRuleError('Only scheduled matches can be deleted');
     }
     await this.pool.query(`DELETE FROM matches WHERE id = $1`, [id]);
+  }
+
+  // ── Sanctions ─────────────────────────────────────────────────────────────
+
+  /**
+   * Records a sanction (card/foul) for a player or team during a match.
+   * Validates that the match is in_progress and that the sanction type belongs to the tournament.
+   */
+  async addSanction(matchId: string, dto: CreateSanctionDto): Promise<MatchSanction> {
+    // Verify match exists and is in_progress
+    const matchResult = await this.pool.query<MatchRow>(`SELECT * FROM matches WHERE id = $1`, [matchId]);
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+    if (matchResult.rows[0].status !== 'in_progress') {
+      throw new BusinessRuleError('Sanctions can only be given during in_progress matches');
+    }
+
+    // Verify sanction type exists and belongs to the same tournament
+    const sanctionCheck = await this.pool.query<{ id: string }>(
+      `SELECT st.id FROM sanction_types st
+       JOIN tournaments t ON t.id = st.tournament_id
+       JOIN phases p ON p.tournament_id = t.id
+       JOIN matches m ON m.phase_id = p.id
+       WHERE m.id = $1 AND st.id = $2`,
+      [matchId, dto.sanctionTypeId],
+    );
+    if (sanctionCheck.rowCount === 0) {
+      throw new BusinessRuleError('Sanction type not found or does not belong to this tournament');
+    }
+
+    const result = await this.pool.query<MatchSanctionRow>(
+      `INSERT INTO match_sanctions (match_id, sanction_type_id, team_id, player_id, period_number, minute, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [matchId, dto.sanctionTypeId, dto.teamId, dto.playerId, dto.periodNumber, dto.minute, dto.notes],
+    );
+
+    return mapSanctionRow(result.rows[0]);
+  }
+
+  /**
+   * Returns all sanctions for a match, enriched with sanction type and player info.
+   */
+  async getSanctions(matchId: string): Promise<MatchSanction[]> {
+    const result = await this.pool.query<MatchSanctionRow>(
+      `SELECT ms.*,
+              st.name AS sanction_name, st.code AS sanction_code,
+              st.color AS sanction_color, st.icon AS sanction_icon,
+              p.name AS player_name, p.jersey_number AS player_jersey,
+              t.name AS team_name
+       FROM match_sanctions ms
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       LEFT JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       WHERE ms.match_id = $1
+       ORDER BY ms.created_at ASC`,
+      [matchId],
+    );
+    return result.rows.map(mapSanctionRow);
+  }
+
+  // ── Match Events ──────────────────────────────────────────────────────────
+
+  /**
+   * Records a generic event in the match timeline.
+   */
+  async addEvent(matchId: string, dto: CreateMatchEventDto): Promise<MatchEvent> {
+    // Verify match exists
+    const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+
+    const result = await this.pool.query<MatchEventRow>(
+      `INSERT INTO match_events (match_id, event_type, team_id, player_id, period_number, match_minute, payload)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [matchId, dto.eventType, dto.teamId, dto.playerId, dto.periodNumber, dto.matchMinute, JSON.stringify(dto.payload)],
+    );
+
+    return mapEventRow(result.rows[0]);
+  }
+
+  /**
+   * Returns all events for a match, ordered chronologically.
+   */
+  async getEvents(matchId: string): Promise<MatchEvent[]> {
+    const result = await this.pool.query<MatchEventRow>(
+      `SELECT me.*,
+              p.name AS player_name,
+              t.name AS team_name
+       FROM match_events me
+       LEFT JOIN players p ON p.id = me.player_id
+       LEFT JOIN teams t ON t.id = me.team_id
+       WHERE me.match_id = $1
+       ORDER BY me.created_at ASC`,
+      [matchId],
+    );
+    return result.rows.map(mapEventRow);
+  }
+
+  // ── Match Scorers ─────────────────────────────────────────────────────────
+
+  /**
+   * Records who scored a point/goal.
+   */
+  async addScorer(matchId: string, dto: CreateScorerDto): Promise<MatchScorer> {
+    // Verify match is in_progress
+    const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+    if (matchResult.rows[0].status !== 'in_progress') {
+      throw new BusinessRuleError('Scorers can only be registered during in_progress matches');
+    }
+
+    // Verify player belongs to the team
+    const playerCheck = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM players WHERE id = $1 AND team_id = $2`,
+      [dto.playerId, dto.teamId],
+    );
+    if (parseInt(playerCheck.rows[0].count, 10) === 0) {
+      throw new BusinessRuleError('Player does not belong to the specified team');
+    }
+
+    const result = await this.pool.query<MatchScorerRow>(
+      `INSERT INTO match_scorers (match_id, team_id, player_id, period_number, match_minute, points)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [matchId, dto.teamId, dto.playerId, dto.periodNumber, dto.matchMinute, dto.points],
+    );
+
+    return mapScorerRow(result.rows[0]);
+  }
+
+  /**
+   * Returns all scorers for a match, enriched with player info.
+   */
+  async getScorers(matchId: string): Promise<MatchScorer[]> {
+    const result = await this.pool.query<MatchScorerRow>(
+      `SELECT ms.*,
+              p.name AS player_name, p.jersey_number AS player_jersey,
+              t.name AS team_name
+       FROM match_scorers ms
+       JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       WHERE ms.match_id = $1
+       ORDER BY ms.created_at ASC`,
+      [matchId],
+    );
+    return result.rows.map(mapScorerRow);
   }
 }

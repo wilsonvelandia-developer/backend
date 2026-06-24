@@ -7,6 +7,7 @@ import {
   updatePeriodScoreSchema, periodParamsSchema,
   registerLineupSchema, rotateTeamSchema,
   substitutionSchema,
+  createSanctionSchema, createMatchEventSchema, createScorerSchema,
 } from './matches.schema.js';
 
 /**
@@ -221,6 +222,81 @@ export function buildMatchesRouter(service: MatchesService): Router {
       }
       res.json({ data: result.rows[0] });
     } catch (err) {
+      next(err);
+    }
+  });
+
+  // ── Sanctions ─────────────────────────────────────────────────────────────
+
+  router.post('/:id/sanctions', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const dto = createSanctionSchema.parse(req.body);
+      const sanction = await service.addSanction(id, dto);
+      res.status(201).json({ data: sanction });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid sanction data', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.get('/:id/sanctions', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const sanctions = await service.getSanctions(id);
+      res.json({ data: sanctions });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Match Events ──────────────────────────────────────────────────────────
+
+  router.post('/:id/events', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const dto = createMatchEventSchema.parse(req.body);
+      const event = await service.addEvent(id, dto);
+      res.status(201).json({ data: event });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid event data', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.get('/:id/events', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const events = await service.getEvents(id);
+      res.json({ data: events });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Match Scorers ─────────────────────────────────────────────────────────
+
+  router.post('/:id/scorers', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const dto = createScorerSchema.parse(req.body);
+      const scorer = await service.addScorer(id, dto);
+      res.status(201).json({ data: scorer });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid scorer data', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.get('/:id/scorers', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const scorers = await service.getScorers(id);
+      res.json({ data: scorers });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
       next(err);
     }
   });

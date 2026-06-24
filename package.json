@@ -8,6 +8,8 @@
     "services/*"
   ],
   "scripts": {
+    "test": "npm run test --workspace=services/matches",
+    "test:all": "npm run test --workspaces --if-present",
     "db:up": "docker-compose up -d postgres",
     "db:down": "docker-compose down",
     "db:logs": "docker-compose logs -f postgres",

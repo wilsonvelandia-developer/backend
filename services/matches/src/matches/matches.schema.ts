@@ -82,3 +82,44 @@ export type RegisterLineupDto    = z.infer<typeof registerLineupSchema>;
 export type RotateTeamDto        = z.infer<typeof rotateTeamSchema>;
 export type SubstitutionDto      = z.infer<typeof substitutionSchema>;
 export type ListMatchesQuery     = z.infer<typeof listMatchesSchema>;
+
+// ── Sanction schema ───────────────────────────────────────────────────────────
+
+export const createSanctionSchema = z.object({
+  sanctionTypeId: z.string().uuid('sanctionTypeId must be a valid UUID'),
+  teamId:         z.string().uuid('teamId must be a valid UUID'),
+  playerId:       z.string().uuid('playerId must be a valid UUID').nullable().default(null),
+  periodNumber:   z.number().int().min(1),
+  minute:         z.number().int().min(0).nullable().default(null),
+  notes:          z.string().max(500).nullable().default(null),
+});
+
+export type CreateSanctionDto = z.infer<typeof createSanctionSchema>;
+
+// ── Match Event schema ────────────────────────────────────────────────────────
+
+export const createMatchEventSchema = z.object({
+  eventType: z.enum([
+    'score', 'substitution', 'sanction', 'rotation',
+    'period_start', 'period_end', 'timeout', 'match_start', 'match_end',
+  ]),
+  teamId:       z.string().uuid().nullable().default(null),
+  playerId:     z.string().uuid().nullable().default(null),
+  periodNumber: z.number().int().min(1),
+  matchMinute:  z.number().int().min(0).nullable().default(null),
+  payload:      z.record(z.unknown()).default({}),
+});
+
+export type CreateMatchEventDto = z.infer<typeof createMatchEventSchema>;
+
+// ── Match Scorer schema ───────────────────────────────────────────────────────
+
+export const createScorerSchema = z.object({
+  teamId:       z.string().uuid('teamId must be a valid UUID'),
+  playerId:     z.string().uuid('playerId must be a valid UUID'),
+  periodNumber: z.number().int().min(1),
+  matchMinute:  z.number().int().min(0).nullable().default(null),
+  points:       z.number().int().min(1).default(1),
+});
+
+export type CreateScorerDto = z.infer<typeof createScorerSchema>;
