@@ -1,10 +1,12 @@
 import { createApp } from './app.js';
 import { config }    from './config.js';
 import { logger }    from './logger.js';
+import { createSocketServer } from './websocket/socket-server.js';
+import { registerMatchHandlers } from './websocket/match-handlers.js';
 
 /**
  * Gateway entry point.
- * Starts the HTTP server and handles graceful shutdown on SIGTERM / SIGINT.
+ * Starts the HTTP server with WebSocket support and handles graceful shutdown.
  */
 const app = createApp();
 
@@ -14,6 +16,11 @@ const server = app.listen(config.port, () => {
     'Gateway service started',
   );
 });
+
+// ── WebSocket Server ────────────────────────────────────────────────────────
+const io = createSocketServer(server);
+registerMatchHandlers(io);
+logger.info('WebSocket server attached to gateway');
 
 // ── Graceful shutdown ──────────────────────────────────────────────────────
 // Stop accepting new connections, let in-flight requests finish, then exit.

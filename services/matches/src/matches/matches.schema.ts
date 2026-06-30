@@ -123,3 +123,33 @@ export const createScorerSchema = z.object({
 });
 
 export type CreateScorerDto = z.infer<typeof createScorerSchema>;
+
+// ── Match Setup schema ────────────────────────────────────────────────────────
+
+export const matchSetupSchema = z.object({
+  coinTossWinnerTeamId: z.string().uuid().nullable().default(null),
+  fieldSideHome:        z.enum(['A', 'B']).nullable().default(null),
+  fieldSideAway:        z.enum(['A', 'B']).nullable().default(null),
+  firstServeTeamId:     z.string().uuid().nullable().default(null),
+});
+
+export type MatchSetupDto = z.infer<typeof matchSetupSchema>;
+
+// ── Match Lineup schema ───────────────────────────────────────────────────────
+
+const lineupPlayerSchema = z.object({
+  playerId:       z.string().uuid(),
+  isStarter:      z.boolean(),
+  isCaptain:      z.boolean().default(false),
+  isGoalkeeper:   z.boolean().default(false),
+  isLibero:       z.boolean().default(false),
+  volleyballZone: z.number().int().min(1).max(6).nullable().default(null),
+});
+
+export const saveLineupSchema = z.object({
+  teamId:       z.string().uuid(),
+  periodNumber: z.number().int().min(1).default(1),
+  players:      z.array(lineupPlayerSchema).min(1),
+});
+
+export type SaveLineupDto = z.infer<typeof saveLineupSchema>;

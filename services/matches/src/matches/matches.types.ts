@@ -115,6 +115,16 @@ export interface SportRules {
   hasRotation:        boolean;
 }
 
+// ── Tournament Substitution Rules (loaded alongside sport rules) ──────────────
+
+export interface TournamentSubRules {
+  allowReentry:        boolean;
+  enforcePairedSubs:   boolean;
+  liberoUnlimitedSubs: boolean;
+  maxSubsPerPeriod:    number | null; // overrides sport maxSubstitutions if set
+  maxSubsOverride:     number | null; // tournament-level override for maxSubstitutions
+}
+
 // ── Match detail (match + periods) ────────────────────────────────────────────
 
 export interface MatchDetail {
@@ -275,5 +285,74 @@ export function mapScorerRow(row: MatchScorerRow): MatchScorer {
     playerName:   row.player_name,
     playerJersey: row.player_jersey,
     teamName:     row.team_name,
+  };
+}
+
+// ── Match Lineup ──────────────────────────────────────────────────────────────
+
+export interface MatchLineupRow {
+  id:              string;
+  match_id:        string;
+  team_id:         string;
+  player_id:       string;
+  is_starter:      boolean;
+  is_captain:      boolean;
+  is_goalkeeper:   boolean;
+  is_libero:       boolean;
+  volleyball_zone: number | null;
+  period_number:   number;
+  created_at:      Date;
+  // Joined
+  player_name?:    string;
+  jersey_number?:  number;
+  position?:       string;
+}
+
+export interface MatchLineupPlayer {
+  id:             string;
+  matchId:        string;
+  teamId:         string;
+  playerId:       string;
+  isStarter:      boolean;
+  isCaptain:      boolean;
+  isGoalkeeper:   boolean;
+  isLibero:       boolean;
+  volleyballZone: number | null;
+  periodNumber:   number;
+  createdAt:      string;
+  playerName?:    string;
+  jerseyNumber?:  number;
+  position?:      string;
+}
+
+export function mapLineupRow(row: MatchLineupRow): MatchLineupPlayer {
+  return {
+    id:             row.id,
+    matchId:        row.match_id,
+    teamId:         row.team_id,
+    playerId:       row.player_id,
+    isStarter:      row.is_starter,
+    isCaptain:      row.is_captain,
+    isGoalkeeper:   row.is_goalkeeper,
+    isLibero:       row.is_libero,
+    volleyballZone: row.volleyball_zone,
+    periodNumber:   row.period_number,
+    createdAt:      row.created_at.toISOString(),
+    playerName:     row.player_name,
+    jerseyNumber:   row.jersey_number,
+    position:       row.position,
+  };
+}
+
+// ── Match Setup ───────────────────────────────────────────────────────────────
+
+export interface MatchSetup {
+  coinTossWinnerTeamId: string | null;
+  fieldSideHome:        string | null;
+  fieldSideAway:        string | null;
+  firstServeTeamId:     string | null;
+  lineups: {
+    home: MatchLineupPlayer[];
+    away: MatchLineupPlayer[];
   };
 }

@@ -5,8 +5,9 @@ import {
   RegisterLineupDto, RotateTeamDto,
   SubstitutionDto, ListMatchesQuery,
   CreateSanctionDto, CreateMatchEventDto, CreateScorerDto,
+  MatchSetupDto, SaveLineupDto,
 } from './matches.schema.js';
-import { MatchDetail, MatchSanction, MatchEvent, MatchScorer } from './matches.types.js';
+import { MatchDetail, MatchSanction, MatchEvent, MatchScorer, MatchLineupPlayer, MatchSetup } from './matches.types.js';
 
 /**
  * Matches service — orchestrates match lifecycle, scoring, rotations, substitutions,
@@ -85,6 +86,10 @@ export class MatchesService {
     return this.repo.getSanctions(matchId);
   }
 
+  async getSanctionsByPlayer(matchId: string, teamId: string): Promise<unknown[]> {
+    return this.repo.getSanctionsByPlayer(matchId, teamId);
+  }
+
   // ── Match Events ──────────────────────────────────────────────────────────
 
   async addEvent(matchId: string, dto: CreateMatchEventDto): Promise<MatchEvent> {
@@ -103,5 +108,25 @@ export class MatchesService {
 
   async getScorers(matchId: string): Promise<MatchScorer[]> {
     return this.repo.getScorers(matchId);
+  }
+
+  // ── Match Setup ───────────────────────────────────────────────────────────
+
+  async saveSetup(matchId: string, dto: MatchSetupDto): Promise<void> {
+    return this.repo.saveSetup(matchId, dto);
+  }
+
+  async getSetup(matchId: string): Promise<MatchSetup> {
+    return this.repo.getSetup(matchId);
+  }
+
+  // ── Match Lineups ─────────────────────────────────────────────────────────
+
+  async saveMatchLineup(matchId: string, dto: SaveLineupDto): Promise<MatchLineupPlayer[]> {
+    return this.repo.saveMatchLineup(matchId, dto);
+  }
+
+  async getMatchLineup(matchId: string, teamId: string, periodNumber?: number): Promise<MatchLineupPlayer[]> {
+    return this.repo.getMatchLineup(matchId, teamId, periodNumber);
   }
 }

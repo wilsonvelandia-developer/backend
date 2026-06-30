@@ -8,6 +8,7 @@ import {
   registerLineupSchema, rotateTeamSchema,
   substitutionSchema,
   createSanctionSchema, createMatchEventSchema, createScorerSchema,
+  matchSetupSchema, saveLineupSchema,
 } from './matches.schema.js';
 
 /**
@@ -251,6 +252,18 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  router.get('/:id/sanctions/by-player/:teamId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const teamId = req.params['teamId'] as string;
+      const sanctions = await service.getSanctionsByPlayer(id, teamId);
+      res.json({ data: sanctions });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
+      next(err);
+    }
+  });
+
   // ── Match Events ──────────────────────────────────────────────────────────
 
   router.post('/:id/events', async (req: Request, res: Response, next: NextFunction) => {
@@ -297,6 +310,59 @@ export function buildMatchesRouter(service: MatchesService): Router {
       res.json({ data: scorers });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Match Setup ───────────────────────────────────────────────────────────
+
+  router.put('/:id/setup', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const dto = matchSetupSchema.parse(req.body);
+      await service.saveSetup(id, dto);
+      const setup = await service.getSetup(id);
+      res.json({ data: setup });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid setup data', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.get('/:id/setup', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const setup = await service.getSetup(id);
+      res.json({ data: setup });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Match Lineups (starting lineup per team) ──────────────────────────────
+
+  router.post('/:id/match-lineups', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const dto = saveLineupSchema.parse(req.body);
+      const lineup = await service.saveMatchLineup(id, dto);
+      res.status(201).json({ data: lineup });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid lineup data', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.get('/:id/match-lineups/:teamId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const teamId = req.params['teamId'] as string;
+      const periodNumber = req.query['periodNumber'] ? parseInt(req.query['periodNumber'] as string, 10) : undefined;
+      const lineup = await service.getMatchLineup(id, teamId, periodNumber);
+      res.json({ data: lineup });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
       next(err);
     }
   });

@@ -9,8 +9,10 @@ import {
   MatchSanctionRow, mapSanctionRow,
   MatchEventRow, mapEventRow,
   MatchScorerRow, mapScorerRow,
-  SportRules, MatchDetail,
+  MatchLineupRow, mapLineupRow,
+  SportRules, TournamentSubRules, MatchDetail,
   MatchSanction, MatchEvent, MatchScorer,
+  MatchLineupPlayer, MatchSetup,
 } from './matches.types.js';
 import { SportRulesEngine } from './sport-rules.engine.js';
 import {
@@ -18,6 +20,7 @@ import {
   RegisterLineupDto, RotateTeamDto,
   SubstitutionDto, ListMatchesQuery,
   CreateSanctionDto, CreateMatchEventDto, CreateScorerDto,
+  MatchSetupDto, SaveLineupDto,
 } from './matches.schema.js';
 
 /**
@@ -47,6 +50,27 @@ export class MatchesRepository {
        JOIN phases p ON p.id = m.phase_id
        JOIN tournaments t ON t.id = p.tournament_id
        JOIN sports s ON s.id = t.sport_id
+       WHERE m.id = $1`,
+      [matchId],
+    );
+    if (result.rowCount === 0) throw new NotFoundError('Match', matchId);
+    return result.rows[0];
+  }
+
+  /**
+   * Loads tournament-level substitution rules for the match.
+   */
+  async loadTournamentSubRules(matchId: string): Promise<TournamentSubRules> {
+    const result = await this.pool.query<TournamentSubRules>(
+      `SELECT
+         t.allow_reentry AS "allowReentry",
+         t.enforce_paired_subs AS "enforcePairedSubs",
+         t.libero_unlimited_subs AS "liberoUnlimitedSubs",
+         t.max_subs_per_period AS "maxSubsPerPeriod",
+         t.max_subs_override AS "maxSubsOverride"
+       FROM matches m
+       JOIN phases p ON p.id = m.phase_id
+       JOIN tournaments t ON t.id = p.tournament_id
        WHERE m.id = $1`,
       [matchId],
     );
@@ -391,6 +415,7 @@ export class MatchesRepository {
 
   async addSubstitution(matchId: string, dto: SubstitutionDto): Promise<Substitution> {
     const rules = await this.loadSportRules(matchId);
+    const tournamentRules = await this.loadTournamentSubRules(matchId);
     const engine = new SportRulesEngine(rules);
 
     // Verify match is in_progress
@@ -399,6 +424,11 @@ export class MatchesRepository {
     if (matchResult.rows[0].status !== 'in_progress') {
       throw new BusinessRuleError('Substitutions can only be made during in_progress matches');
     }
+
+    // Determine effective max subs (tournament override > sport default)
+    const effectiveMaxSubs = tournamentRules.maxSubsPerPeriod
+      ?? tournamentRules.maxSubsOverride
+      ?? rules.maxSubstitutions;
 
     // Count existing substitutions for this team (per-set for volleyball, per-match for others)
     const countQuery = rules.hasSets
@@ -412,7 +442,17 @@ export class MatchesRepository {
     const countResult = await this.pool.query<{ count: string }>(countQuery, countValues);
     const currentCount = parseInt(countResult.rows[0].count, 10);
 
-    engine.validateSubstitutionAllowed(currentCount);
+    // Check if this is a libero substitution (skip count for libero)
+    const isLiberoSub = await this.isLiberoSubstitution(matchId, dto);
+    if (!(isLiberoSub && tournamentRules.liberoUnlimitedSubs)) {
+      // Validate max substitutions allowed
+      if (effectiveMaxSubs !== null && currentCount >= effectiveMaxSubs) {
+        throw new BusinessRuleError(
+          `Maximum substitutions reached (${effectiveMaxSubs}) for this ${rules.hasSets ? 'set' : 'match'}`,
+          { current: currentCount, max: effectiveMaxSubs },
+        );
+      }
+    }
 
     // Verify both players belong to the team
     const playerCheck = await this.pool.query<{ count: string }>(
@@ -421,6 +461,47 @@ export class MatchesRepository {
     );
     if (parseInt(playerCheck.rows[0].count, 10) < 2) {
       throw new BusinessRuleError('Both players must belong to the specified team');
+    }
+
+    // ── Re-entry validation (football) ──────────────────────────────────────
+    if (!tournamentRules.allowReentry && !rules.hasSets) {
+      // Check if playerIn was previously substituted OUT in this match
+      const prevSubOut = await this.pool.query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM substitutions
+         WHERE match_id = $1 AND team_id = $2 AND player_out_id = $3`,
+        [matchId, dto.teamId, dto.playerInId],
+      );
+      if (parseInt(prevSubOut.rows[0].count, 10) > 0) {
+        throw new BusinessRuleError(
+          'This player was already substituted out and re-entry is not allowed in this tournament',
+          { playerId: dto.playerInId },
+        );
+      }
+    }
+
+    // ── Paired substitution validation (volleyball) ─────────────────────────
+    if (tournamentRules.enforcePairedSubs && rules.hasSets && !isLiberoSub) {
+      // In volleyball with paired subs: player A can only be replaced by player B,
+      // and player B can only re-enter for player A.
+      const previousSubs = await this.pool.query<SubstitutionRow>(
+        `SELECT * FROM substitutions
+         WHERE match_id = $1 AND team_id = $2 AND period_number = $3
+         ORDER BY created_at ASC`,
+        [matchId, dto.teamId, dto.periodNumber],
+      );
+
+      // Check if playerIn was previously subbed out — if so, they can only enter for who replaced them
+      for (const sub of previousSubs.rows) {
+        if (sub.player_out_id === dto.playerInId) {
+          // playerIn was subbed out before; they can only re-enter for the player who replaced them
+          if (dto.playerOutId !== sub.player_in_id) {
+            throw new BusinessRuleError(
+              `Paired substitution rule: player can only re-enter for the player who replaced them`,
+              { playerInId: dto.playerInId, mustReplaceOnly: sub.player_in_id },
+            );
+          }
+        }
+      }
     }
 
     // For volleyball: update the rotation slot if the sport has rotation
@@ -434,6 +515,19 @@ export class MatchesRepository {
       [matchId, dto.teamId, dto.periodNumber, dto.playerOutId, dto.playerInId, dto.minute],
     );
     return mapSubstitutionRow(result.rows[0]);
+  }
+
+  /**
+   * Checks if the substitution involves the libero (either going in or out).
+   */
+  private async isLiberoSubstitution(matchId: string, dto: SubstitutionDto): Promise<boolean> {
+    const result = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*) as count FROM match_lineups
+       WHERE match_id = $1 AND team_id = $2 AND is_libero = true
+       AND player_id = ANY($3::uuid[])`,
+      [matchId, dto.teamId, [dto.playerOutId, dto.playerInId]],
+    );
+    return parseInt(result.rows[0].count, 10) > 0;
   }
 
   async getSubstitutions(matchId: string): Promise<Substitution[]> {
@@ -512,26 +606,75 @@ export class MatchesRepository {
       throw new BusinessRuleError('Sanctions can only be given during in_progress matches');
     }
 
-    // Verify sanction type exists and belongs to the same tournament
-    const sanctionCheck = await this.pool.query<{ id: string }>(
-      `SELECT st.id FROM sanction_types st
+    // Verify sanction type exists and load its config
+    const sanctionTypeResult = await this.pool.query<{
+      id: string; code: string; name: string;
+      accumulation_limit: number | null;
+      expulsion_sanction_id: string | null;
+    }>(
+      `SELECT st.id, st.code, st.name,
+              st.accumulation_limit,
+              st2.id AS expulsion_sanction_id
+       FROM sanction_types st
        JOIN tournaments t ON t.id = st.tournament_id
        JOIN phases p ON p.tournament_id = t.id
        JOIN matches m ON m.phase_id = p.id
+       LEFT JOIN sanction_types st2
+         ON st2.tournament_id = st.tournament_id AND st2.code = 'RED'
        WHERE m.id = $1 AND st.id = $2`,
       [matchId, dto.sanctionTypeId],
     );
-    if (sanctionCheck.rowCount === 0) {
+    if (sanctionTypeResult.rowCount === 0) {
       throw new BusinessRuleError('Sanction type not found or does not belong to this tournament');
     }
 
+    const sanctionType = sanctionTypeResult.rows[0];
+
+    // Insert the sanction
     const result = await this.pool.query<MatchSanctionRow>(
       `INSERT INTO match_sanctions (match_id, sanction_type_id, team_id, player_id, period_number, minute, notes)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
       [matchId, dto.sanctionTypeId, dto.teamId, dto.playerId, dto.periodNumber, dto.minute, dto.notes],
     );
 
-    return mapSanctionRow(result.rows[0]);
+    const sanction = mapSanctionRow(result.rows[0]);
+
+    // ── Accumulation check: auto-expulsion ──────────────────────────────────
+    // If this sanction type has an accumulation limit (e.g. 2 yellows = red),
+    // check if the player has reached it and auto-apply expulsion.
+    if (dto.playerId && sanctionType.accumulation_limit) {
+      const countResult = await this.pool.query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM match_sanctions
+         WHERE match_id = $1 AND player_id = $2 AND sanction_type_id = $3`,
+        [matchId, dto.playerId, dto.sanctionTypeId],
+      );
+      const totalSanctions = parseInt(countResult.rows[0].count, 10);
+
+      if (totalSanctions >= sanctionType.accumulation_limit && sanctionType.expulsion_sanction_id) {
+        // Auto-apply expulsion (RED card)
+        await this.pool.query(
+          `INSERT INTO match_sanctions (match_id, sanction_type_id, team_id, player_id, period_number, minute, notes)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            matchId, sanctionType.expulsion_sanction_id, dto.teamId, dto.playerId,
+            dto.periodNumber, dto.minute,
+            `Expulsión automática por acumulación de ${sanctionType.accumulation_limit} ${sanctionType.name}`,
+          ],
+        );
+
+        // Also register an event for the timeline
+        await this.pool.query(
+          `INSERT INTO match_events (match_id, event_type, team_id, player_id, period_number, match_minute, payload)
+           VALUES ($1, 'sanction', $2, $3, $4, $5, $6)`,
+          [
+            matchId, dto.teamId, dto.playerId, dto.periodNumber, dto.minute,
+            JSON.stringify({ autoExpulsion: true, reason: `${sanctionType.accumulation_limit}x ${sanctionType.code}` }),
+          ],
+        );
+      }
+    }
+
+    return sanction;
   }
 
   /**
@@ -553,6 +696,64 @@ export class MatchesRepository {
       [matchId],
     );
     return result.rows.map(mapSanctionRow);
+  }
+
+  /**
+   * Returns sanctions grouped by player for a given team in a match.
+   * Useful for showing accumulation warnings.
+   */
+  async getSanctionsByPlayer(matchId: string, teamId: string): Promise<Array<{
+    playerId: string;
+    playerName: string;
+    jerseyNumber: number;
+    sanctions: MatchSanction[];
+    totalYellows: number;
+    hasRed: boolean;
+  }>> {
+    const result = await this.pool.query<MatchSanctionRow & { sanction_code: string }>(
+      `SELECT ms.*,
+              st.name AS sanction_name, st.code AS sanction_code,
+              st.color AS sanction_color, st.icon AS sanction_icon,
+              p.name AS player_name, p.jersey_number AS player_jersey,
+              t.name AS team_name
+       FROM match_sanctions ms
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       LEFT JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       WHERE ms.match_id = $1 AND ms.team_id = $2 AND ms.player_id IS NOT NULL
+       ORDER BY ms.created_at ASC`,
+      [matchId, teamId],
+    );
+
+    // Group by player
+    const grouped = new Map<string, {
+      playerId: string;
+      playerName: string;
+      jerseyNumber: number;
+      sanctions: MatchSanction[];
+      totalYellows: number;
+      hasRed: boolean;
+    }>();
+
+    for (const row of result.rows) {
+      if (!row.player_id) continue;
+      if (!grouped.has(row.player_id)) {
+        grouped.set(row.player_id, {
+          playerId: row.player_id,
+          playerName: row.player_name ?? '',
+          jerseyNumber: row.player_jersey ?? 0,
+          sanctions: [],
+          totalYellows: 0,
+          hasRed: false,
+        });
+      }
+      const entry = grouped.get(row.player_id)!;
+      entry.sanctions.push(mapSanctionRow(row));
+      if (row.sanction_code === 'YELLOW') entry.totalYellows++;
+      if (row.sanction_code === 'RED') entry.hasRed = true;
+    }
+
+    return Array.from(grouped.values());
   }
 
   // ── Match Events ──────────────────────────────────────────────────────────
@@ -639,5 +840,120 @@ export class MatchesRepository {
       [matchId],
     );
     return result.rows.map(mapScorerRow);
+  }
+
+  // ── Match Setup ───────────────────────────────────────────────────────────
+
+  /**
+   * Saves match setup info (coin toss, field sides, first serve).
+   */
+  async saveSetup(matchId: string, dto: MatchSetupDto): Promise<void> {
+    const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+
+    await this.pool.query(
+      `UPDATE matches SET
+         coin_toss_winner_team_id = $1,
+         field_side_home = $2,
+         field_side_away = $3,
+         first_serve_team_id = $4,
+         updated_at = NOW()
+       WHERE id = $5`,
+      [dto.coinTossWinnerTeamId, dto.fieldSideHome, dto.fieldSideAway, dto.firstServeTeamId, matchId],
+    );
+  }
+
+  /**
+   * Gets the full match setup including lineups for both teams.
+   */
+  async getSetup(matchId: string): Promise<MatchSetup> {
+    const matchResult = await this.pool.query<{
+      coin_toss_winner_team_id: string | null;
+      field_side_home: string | null;
+      field_side_away: string | null;
+      first_serve_team_id: string | null;
+      home_team_id: string;
+      away_team_id: string;
+    }>(
+      `SELECT coin_toss_winner_team_id, field_side_home, field_side_away,
+              first_serve_team_id, home_team_id, away_team_id
+       FROM matches WHERE id = $1`,
+      [matchId],
+    );
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+
+    const match = matchResult.rows[0];
+
+    const homeLineup = await this.getMatchLineup(matchId, match.home_team_id);
+    const awayLineup = await this.getMatchLineup(matchId, match.away_team_id);
+
+    return {
+      coinTossWinnerTeamId: match.coin_toss_winner_team_id,
+      fieldSideHome:        match.field_side_home,
+      fieldSideAway:        match.field_side_away,
+      firstServeTeamId:     match.first_serve_team_id,
+      lineups: { home: homeLineup, away: awayLineup },
+    };
+  }
+
+  // ── Match Lineups ─────────────────────────────────────────────────────────
+
+  /**
+   * Saves the starting lineup for a team in a match.
+   * Replaces existing lineup for that team/period.
+   */
+  async saveMatchLineup(matchId: string, dto: SaveLineupDto): Promise<MatchLineupPlayer[]> {
+    const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
+    if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Delete existing lineup for this team/period
+      await client.query(
+        `DELETE FROM match_lineups WHERE match_id = $1 AND team_id = $2 AND period_number = $3`,
+        [matchId, dto.teamId, dto.periodNumber],
+      );
+
+      for (const player of dto.players) {
+        await client.query(
+          `INSERT INTO match_lineups
+             (match_id, team_id, player_id, is_starter, is_captain, is_goalkeeper, is_libero, volleyball_zone, period_number)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            matchId, dto.teamId, player.playerId,
+            player.isStarter, player.isCaptain, player.isGoalkeeper,
+            player.isLibero, player.volleyballZone, dto.periodNumber,
+          ],
+        );
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    return this.getMatchLineup(matchId, dto.teamId, dto.periodNumber);
+  }
+
+  /**
+   * Gets lineup for a team in a match, enriched with player info.
+   */
+  async getMatchLineup(matchId: string, teamId: string, periodNumber?: number): Promise<MatchLineupPlayer[]> {
+    const period = periodNumber ?? 1;
+    const result = await this.pool.query<MatchLineupRow>(
+      `SELECT ml.*,
+              p.name AS player_name, p.jersey_number, p.position
+       FROM match_lineups ml
+       JOIN players p ON p.id = ml.player_id
+       WHERE ml.match_id = $1 AND ml.team_id = $2 AND ml.period_number = $3
+       ORDER BY ml.is_starter DESC, ml.volleyball_zone ASC NULLS LAST, p.jersey_number ASC`,
+      [matchId, teamId, period],
+    );
+    return result.rows.map(mapLineupRow);
   }
 }
