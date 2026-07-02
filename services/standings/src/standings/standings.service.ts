@@ -39,11 +39,29 @@ export class StandingsService {
 
   /**
    * Returns standings separated by group for a tournament.
-   * Uses team_groups to determine group membership.
-   * Calculates standings from finished matches in "Fase de Grupos" phase.
-   * If no matches played yet, returns teams with zeros.
    */
   async getByGroups(tournamentId: string): Promise<GroupStandings[]> {
     return this.repo.getByGroups(tournamentId);
+  }
+
+  /**
+   * Returns top scorers for a tournament, aggregated from match_scorers.
+   */
+  async getTopScorers(tournamentId: string, limit = 20): Promise<unknown[]> {
+    return this.repo.getTopScorers(tournamentId, limit);
+  }
+
+  /**
+   * Returns individual player statistics aggregated across all matches.
+   */
+  async getPlayerStats(playerId: string): Promise<unknown> {
+    return this.repo.getPlayerStats(playerId);
+  }
+
+  /**
+   * Returns most sanctioned players for a tournament.
+   */
+  async getTopSanctioned(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getTopSanctioned(tournamentId);
   }
 }

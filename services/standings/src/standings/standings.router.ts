@@ -46,5 +46,39 @@ export function buildStandingsRouter(service: StandingsService): Router {
     }
   });
 
+  // GET /standings/top-scorers/:tournamentId — top scorers ranking
+  router.get('/top-scorers/:tournamentId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tournamentId = req.params['tournamentId'] as string;
+      const limit = parseInt(req.query['limit'] as string || '20', 10);
+      const result = await service.getTopScorers(tournamentId, limit);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /standings/player-stats/:playerId — individual player statistics
+  router.get('/player-stats/:playerId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const playerId = req.params['playerId'] as string;
+      const result = await service.getPlayerStats(playerId);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /standings/top-sanctioned/:tournamentId — most sanctioned players
+  router.get('/top-sanctioned/:tournamentId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tournamentId = req.params['tournamentId'] as string;
+      const result = await service.getTopSanctioned(tournamentId);
+      res.json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

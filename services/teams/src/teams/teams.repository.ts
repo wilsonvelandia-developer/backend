@@ -17,6 +17,47 @@ export class TeamsRepository {
 
   // ── Teams ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Find teams that a user is linked to via players.user_id.
+   * Returns team + tournament info for the player dashboard.
+   */
+  async findTeamsForUser(userId: string): Promise<Array<{
+    teamId: string; teamName: string;
+    tournamentId: string; tournamentName: string;
+    category: string | null; sportName: string;
+    jerseyNumber: number; position: string | null;
+  }>> {
+    const result = await this.pool.query<{
+      team_id: string; team_name: string;
+      tournament_id: string; tournament_name: string;
+      category: string | null; sport_name: string;
+      jersey_number: number; position: string | null;
+    }>(
+      `SELECT t.id AS team_id, t.name AS team_name,
+              tr.id AS tournament_id, tr.name AS tournament_name,
+              tr.category, s.name AS sport_name,
+              p.jersey_number, p.position
+       FROM players p
+       JOIN teams t ON t.id = p.team_id
+       LEFT JOIN tournaments tr ON tr.id = t.tournament_id
+       LEFT JOIN sports s ON s.id = tr.sport_id
+       WHERE p.user_id = $1 AND p.is_active = true
+       ORDER BY tr.name, t.name`,
+      [userId],
+    );
+
+    return result.rows.map((r) => ({
+      teamId:         r.team_id,
+      teamName:       r.team_name,
+      tournamentId:   r.tournament_id,
+      tournamentName: r.tournament_name ?? 'Sin torneo',
+      category:       r.category,
+      sportName:      r.sport_name ?? '',
+      jerseyNumber:   r.jersey_number,
+      position:       r.position,
+    }));
+  }
+
   async findAll(filters: ListTeamsQuery): Promise<Team[]> {
     const conditions: string[] = [];
     const values: unknown[] = [];
@@ -178,7 +219,6 @@ export class TeamsRepository {
     const currentCount = parseInt(countResult.rows[0].count, 10);
 
     // Warn but do not block — rosters may exceed game count (bench players)
-    // The rule enforced: cannot exceed 3x the sport's players_per_team
     const maxRosterSize = sportRules.playersPerTeam * 3;
     if (currentCount >= maxRosterSize) {
       throw new BusinessRuleError(
@@ -187,12 +227,56 @@ export class TeamsRepository {
       );
     }
 
+    // ── User linking logic ──────────────────────────────────────────────────
+    let userId: string | null = input.userId ?? null;
+
+    // If userId provided directly, use it. Otherwise, try to find/create by document.
+    if (!userId && input.documentNumber) {
+      // Search existing user by document
+      const existingUser = await this.pool.query<{ id: string }>(
+        `SELECT id FROM users WHERE document_number = $1 LIMIT 1`,
+        [input.documentNumber],
+      );
+
+      if (existingUser.rowCount && existingUser.rowCount > 0) {
+        userId = existingUser.rows[0].id;
+      } else {
+        // Create new user with document as password
+        const bcrypt = await import('bcrypt');
+        const passwordHash = await bcrypt.hash(input.documentNumber, 10);
+        const email = input.email || `${input.documentNumber}@player.olimpicapp.local`;
+
+        const newUser = await this.pool.query<{ id: string }>(
+          `INSERT INTO users (name, email, document_type, document_number, phone, birth_date, password_hash, must_change_password, is_active)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, true, true)
+           RETURNING id`,
+          [
+            input.name,
+            email,
+            input.documentType || 'CC',
+            input.documentNumber,
+            input.phone || null,
+            input.birthDate || null,
+            passwordHash,
+          ],
+        );
+        userId = newUser.rows[0].id;
+
+        // Assign 'player' role
+        await this.pool.query(
+          `INSERT INTO user_roles (user_id, role_id) VALUES ($1, 'player') ON CONFLICT DO NOTHING`,
+          [userId],
+        );
+      }
+    }
+
+    // ── Create player record (link to team + user) ──────────────────────────
     try {
       const result = await this.pool.query<PlayerRow>(
-        `INSERT INTO players (team_id, name, jersey_number, position)
-         VALUES ($1, $2, $3, $4)
+        `INSERT INTO players (team_id, name, jersey_number, position, user_id)
+         VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [teamId, input.name, input.jerseyNumber, input.position],
+        [teamId, input.name, input.jerseyNumber, input.position, userId],
       );
       return mapPlayerRow(result.rows[0]);
     } catch (err: unknown) {

@@ -114,6 +114,20 @@ export class TournamentsService {
     return this.repo.registerStaff(tournamentId, userId, staffRole);
   }
 
+  /**
+   * Gets all staff for a tournament, optionally filtered by role.
+   */
+  async getStaff(tournamentId: string, role?: string): Promise<unknown[]> {
+    return this.repo.getStaff(tournamentId, role);
+  }
+
+  /**
+   * Removes a staff member from a tournament.
+   */
+  async removeStaff(tournamentId: string, userId: string): Promise<void> {
+    return this.repo.removeStaff(tournamentId, userId);
+  }
+
   // ── Group draw ────────────────────────────────────────────────────────────
 
   async getGroups(tournamentId: string): Promise<Array<{ teamId: string; teamName: string; groupName: string; drawOrder: number }>> {
@@ -160,5 +174,88 @@ export class TournamentsService {
 
   async saveSanctionTypes(tournamentId: string, types: Array<{ name: string; code: string; pointsEffect: number; monetaryValue: number; color: string; icon: string }>): Promise<void> {
     return this.repo.saveSanctionTypes(tournamentId, types);
+  }
+
+  // ── Public Enrollment ─────────────────────────────────────────────────────
+
+  /**
+   * Self-enrollment: creates a team + players + enrollment record.
+   * No auth required — used by public enrollment form.
+   * Status starts as 'pending' — organizer approves from admin panel.
+   */
+  async enrollTeam(tournamentId: string, data: {
+    teamName: string;
+    shortName?: string;
+    contactName: string;
+    contactPhone: string;
+    contactEmail?: string;
+    players: Array<{ name: string; jerseyNumber: number; position?: string }>;
+  }): Promise<{ teamId: string; enrollmentId: string }> {
+    return this.repo.enrollTeam(tournamentId, data);
+  }
+
+  // ── Venues ─────────────────────────────────────────────────────────────────
+
+  async getVenues(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getVenues(tournamentId);
+  }
+  async createVenue(tournamentId: string, data: { name: string; address?: string; locationUrl?: string; capacity?: number; surfaceType?: string }): Promise<unknown> {
+    return this.repo.createVenue(tournamentId, data);
+  }
+  async updateVenue(venueId: string, data: Record<string, unknown>): Promise<unknown> {
+    return this.repo.updateVenue(venueId, data);
+  }
+  async deleteVenue(venueId: string): Promise<void> {
+    return this.repo.deleteVenue(venueId);
+  }
+
+  // ── Announcements ─────────────────────────────────────────────────────────
+
+  async getAnnouncements(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getAnnouncements(tournamentId);
+  }
+  async createAnnouncement(tournamentId: string, authorId: string, data: { title: string; content: string; priority?: string; isPinned?: boolean }): Promise<unknown> {
+    return this.repo.createAnnouncement(tournamentId, authorId, data);
+  }
+  async deleteAnnouncement(annId: string): Promise<void> {
+    return this.repo.deleteAnnouncement(annId);
+  }
+
+  // ── Payments ──────────────────────────────────────────────────────────────
+
+  async getPayments(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getPayments(tournamentId);
+  }
+  async createPayment(tournamentId: string, recordedBy: string, data: { teamId: string; amount: number; paymentMethod?: string; reference?: string; notes?: string }): Promise<unknown> {
+    return this.repo.createPayment(tournamentId, recordedBy, data);
+  }
+  async updatePaymentStatus(paymentId: string, status: string): Promise<void> {
+    return this.repo.updatePaymentStatus(paymentId, status);
+  }
+
+  // ── Gallery ───────────────────────────────────────────────────────────────
+
+  async getGallery(tournamentId: string): Promise<unknown[]> {
+    return this.repo.getGallery(tournamentId);
+  }
+  async addPhoto(tournamentId: string, uploadedBy: string, data: { url: string; thumbnailUrl?: string; caption?: string; matchId?: string; teamId?: string }): Promise<unknown> {
+    return this.repo.addPhoto(tournamentId, uploadedBy, data);
+  }
+  async deletePhoto(photoId: string): Promise<void> {
+    return this.repo.deletePhoto(photoId);
+  }
+
+  // ── Enrollment Management ─────────────────────────────────────────────────
+
+  async getEnrollments(tournamentId: string, status?: string): Promise<unknown[]> {
+    return this.repo.getEnrollments(tournamentId, status);
+  }
+
+  async updateEnrollmentStatus(tournamentId: string, enrollmentId: string, status: string): Promise<void> {
+    return this.repo.updateEnrollmentStatus(tournamentId, enrollmentId, status);
+  }
+
+  async deleteEnrollment(tournamentId: string, enrollmentId: string): Promise<void> {
+    return this.repo.deleteEnrollment(tournamentId, enrollmentId);
   }
 }

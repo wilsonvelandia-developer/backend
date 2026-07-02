@@ -285,6 +285,48 @@ export class TournamentsRepository {
     );
   }
 
+  /**
+   * Gets all staff for a tournament with user info.
+   */
+  async getStaff(tournamentId: string, role?: string): Promise<Array<{
+    userId: string; userName: string; email: string; staffRole: string; assignedAt: string;
+  }>> {
+    const conditions = ['ts.tournament_id = $1'];
+    const values: unknown[] = [tournamentId];
+    if (role) {
+      conditions.push('ts.staff_role = $2');
+      values.push(role);
+    }
+
+    const result = await this.pool.query<{
+      user_id: string; name: string; email: string; staff_role: string; assigned_at: Date;
+    }>(
+      `SELECT ts.user_id, u.name, u.email, ts.staff_role, ts.assigned_at
+       FROM tournament_staff ts
+       JOIN users u ON u.id = ts.user_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY ts.staff_role, u.name`,
+      values,
+    );
+    return result.rows.map((r) => ({
+      userId:     r.user_id,
+      userName:   r.name,
+      email:      r.email,
+      staffRole:  r.staff_role,
+      assignedAt: r.assigned_at.toISOString(),
+    }));
+  }
+
+  /**
+   * Removes all staff roles for a user in a tournament.
+   */
+  async removeStaff(tournamentId: string, userId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM tournament_staff WHERE tournament_id = $1 AND user_id = $2`,
+      [tournamentId, userId],
+    );
+  }
+
   // ── Group Draw ────────────────────────────────────────────────────────────
 
   async getGroups(tournamentId: string): Promise<Array<{ teamId: string; teamName: string; groupName: string; drawOrder: number }>> {
@@ -546,5 +588,249 @@ export class TournamentsRepository {
       await client.query('COMMIT');
     } catch (err) { await client.query('ROLLBACK'); throw err; }
     finally { client.release(); }
+  }
+
+  // ── Public Enrollment ─────────────────────────────────────────────────────
+
+  /**
+   * Self-enrollment: creates team + players + enrollment in a transaction.
+   * Team is created with tournament_id set. Enrollment status = 'pending'.
+   */
+  async enrollTeam(tournamentId: string, data: {
+    teamName: string;
+    shortName?: string;
+    contactName: string;
+    contactPhone: string;
+    contactEmail?: string;
+    players: Array<{ name: string; jerseyNumber: number; position?: string }>;
+  }): Promise<{ teamId: string; enrollmentId: string }> {
+    // Verify tournament exists and is accepting enrollments
+    const tResult = await this.pool.query<TournamentRow>(
+      `SELECT id, status FROM tournaments WHERE id = $1`, [tournamentId],
+    );
+    if (tResult.rowCount === 0) throw new NotFoundError('Tournament', tournamentId);
+    if (tResult.rows[0].status === 'finished' || tResult.rows[0].status === 'cancelled') {
+      throw new BusinessRuleError('Este torneo no acepta inscripciones');
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Create team
+      const teamResult = await client.query<{ id: string }>(
+        `INSERT INTO teams (tournament_id, name, short_name, phone, email, status)
+         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
+        [tournamentId, data.teamName, data.shortName || null, data.contactPhone, data.contactEmail || null],
+      );
+      const teamId = teamResult.rows[0].id;
+
+      // Create players
+      for (const player of data.players) {
+        await client.query(
+          `INSERT INTO players (team_id, name, jersey_number, position)
+           VALUES ($1, $2, $3, $4)`,
+          [teamId, player.name, player.jerseyNumber, player.position || null],
+        );
+      }
+
+      // Create enrollment record
+      const enrollResult = await client.query<{ id: string }>(
+        `INSERT INTO tournament_enrollments (tournament_id, team_id, status)
+         VALUES ($1, $2, 'active') RETURNING id`,
+        [tournamentId, teamId],
+      );
+      const enrollmentId = enrollResult.rows[0].id;
+
+      await client.query('COMMIT');
+      return { teamId, enrollmentId };
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
+  // ── Venues ─────────────────────────────────────────────────────────────────
+
+  async getVenues(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT * FROM venues WHERE tournament_id = $1 ORDER BY name`, [tournamentId]);
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r['id'], name: r['name'], address: r['address'],
+      locationUrl: r['location_url'], capacity: r['capacity'],
+      surfaceType: r['surface_type'], isActive: r['is_active'],
+    }));
+  }
+
+  async createVenue(tournamentId: string, data: { name: string; address?: string; locationUrl?: string; capacity?: number; surfaceType?: string }): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO venues (tournament_id, name, address, location_url, capacity, surface_type)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [tournamentId, data.name, data.address ?? null, data.locationUrl ?? null, data.capacity ?? null, data.surfaceType ?? null]);
+    const r = result.rows[0] as Record<string, unknown>;
+    return { id: r['id'], name: r['name'], address: r['address'], locationUrl: r['location_url'], capacity: r['capacity'], surfaceType: r['surface_type'] };
+  }
+
+  async updateVenue(venueId: string, data: Record<string, unknown>): Promise<unknown> {
+    const fields: string[] = []; const values: unknown[] = []; let idx = 1;
+    if (data['name'] !== undefined) { fields.push(`name=$${idx++}`); values.push(data['name']); }
+    if (data['address'] !== undefined) { fields.push(`address=$${idx++}`); values.push(data['address']); }
+    if (data['locationUrl'] !== undefined) { fields.push(`location_url=$${idx++}`); values.push(data['locationUrl']); }
+    if (data['capacity'] !== undefined) { fields.push(`capacity=$${idx++}`); values.push(data['capacity']); }
+    if (data['surfaceType'] !== undefined) { fields.push(`surface_type=$${idx++}`); values.push(data['surfaceType']); }
+    if (data['isActive'] !== undefined) { fields.push(`is_active=$${idx++}`); values.push(data['isActive']); }
+    if (fields.length === 0) return {};
+    values.push(venueId);
+    const result = await this.pool.query(`UPDATE venues SET ${fields.join(',')} WHERE id=$${idx} RETURNING *`, values);
+    return result.rows[0] ?? {};
+  }
+
+  async deleteVenue(venueId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM venues WHERE id=$1`, [venueId]);
+  }
+
+  // ── Announcements ─────────────────────────────────────────────────────────
+
+  async getAnnouncements(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT a.*, u.name AS author_name FROM announcements a
+       LEFT JOIN users u ON u.id = a.author_id
+       WHERE a.tournament_id = $1 ORDER BY a.is_pinned DESC, a.published_at DESC`, [tournamentId]);
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r['id'], title: r['title'], content: r['content'],
+      priority: r['priority'], isPinned: r['is_pinned'],
+      authorName: r['author_name'], publishedAt: (r['published_at'] as Date)?.toISOString(),
+      expiresAt: r['expires_at'] ? (r['expires_at'] as Date).toISOString() : null,
+    }));
+  }
+
+  async createAnnouncement(tournamentId: string, authorId: string, data: { title: string; content: string; priority?: string; isPinned?: boolean }): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO announcements (tournament_id, author_id, title, content, priority, is_pinned)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [tournamentId, authorId, data.title, data.content, data.priority ?? 'normal', data.isPinned ?? false]);
+    const r = result.rows[0] as Record<string, unknown>;
+    return { id: r['id'], title: r['title'], content: r['content'], priority: r['priority'], isPinned: r['is_pinned'], publishedAt: (r['published_at'] as Date)?.toISOString() };
+  }
+
+  async deleteAnnouncement(annId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM announcements WHERE id=$1`, [annId]);
+  }
+
+  // ── Payments ──────────────────────────────────────────────────────────────
+
+  async getPayments(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT p.*, t.name AS team_name, u.name AS recorded_by_name FROM payments p
+       JOIN teams t ON t.id = p.team_id
+       LEFT JOIN users u ON u.id = p.recorded_by
+       WHERE p.tournament_id = $1 ORDER BY p.paid_at DESC`, [tournamentId]);
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r['id'], teamId: r['team_id'], teamName: r['team_name'],
+      amount: r['amount'], currency: r['currency'],
+      paymentMethod: r['payment_method'], reference: r['reference'],
+      notes: r['notes'], status: r['status'],
+      recordedByName: r['recorded_by_name'],
+      paidAt: (r['paid_at'] as Date)?.toISOString(),
+    }));
+  }
+
+  async createPayment(tournamentId: string, recordedBy: string, data: { teamId: string; amount: number; paymentMethod?: string; reference?: string; notes?: string }): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO payments (tournament_id, team_id, amount, payment_method, reference, notes, recorded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [tournamentId, data.teamId, data.amount, data.paymentMethod ?? null, data.reference ?? null, data.notes ?? null, recordedBy]);
+    const r = result.rows[0] as Record<string, unknown>;
+    return { id: r['id'], teamId: r['team_id'], amount: r['amount'], status: r['status'], paidAt: (r['paid_at'] as Date)?.toISOString() };
+  }
+
+  async updatePaymentStatus(paymentId: string, status: string): Promise<void> {
+    await this.pool.query(`UPDATE payments SET status=$1 WHERE id=$2`, [status, paymentId]);
+  }
+
+  // ── Gallery ───────────────────────────────────────────────────────────────
+
+  async getGallery(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT g.*, u.name AS uploaded_by_name FROM gallery_photos g
+       LEFT JOIN users u ON u.id = g.uploaded_by
+       WHERE g.tournament_id = $1 ORDER BY g.created_at DESC`, [tournamentId]);
+    return result.rows.map((r: Record<string, unknown>) => ({
+      id: r['id'], url: r['url'], thumbnailUrl: r['thumbnail_url'],
+      caption: r['caption'], matchId: r['match_id'], teamId: r['team_id'],
+      uploadedByName: r['uploaded_by_name'], createdAt: (r['created_at'] as Date)?.toISOString(),
+    }));
+  }
+
+  async addPhoto(tournamentId: string, uploadedBy: string, data: { url: string; thumbnailUrl?: string; caption?: string; matchId?: string; teamId?: string }): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO gallery_photos (tournament_id, uploaded_by, url, thumbnail_url, caption, match_id, team_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [tournamentId, uploadedBy, data.url, data.thumbnailUrl ?? null, data.caption ?? null, data.matchId ?? null, data.teamId ?? null]);
+    const r = result.rows[0] as Record<string, unknown>;
+    return { id: r['id'], url: r['url'], caption: r['caption'], createdAt: (r['created_at'] as Date)?.toISOString() };
+  }
+
+  async deletePhoto(photoId: string): Promise<void> {
+    await this.pool.query(`DELETE FROM gallery_photos WHERE id=$1`, [photoId]);
+  }
+
+  // ── Enrollment Management ─────────────────────────────────────────────────
+
+  async getEnrollments(tournamentId: string, status?: string): Promise<Array<{
+    id: string; teamId: string; teamName: string; teamShort: string | null;
+    phone: string | null; email: string | null;
+    status: string; enrolledAt: string; playerCount: number;
+  }>> {
+    const conditions = ['te.tournament_id = $1'];
+    const values: unknown[] = [tournamentId];
+
+    if (status) {
+      conditions.push('te.status = $2');
+      values.push(status);
+    }
+
+    const result = await this.pool.query<{
+      id: string; team_id: string; team_name: string; team_short: string | null;
+      phone: string | null; email: string | null;
+      status: string; enrolled_at: Date; player_count: number;
+    }>(
+      `SELECT te.id, te.team_id, t.name AS team_name, t.short_name AS team_short,
+              t.phone, t.email, te.status, te.enrolled_at,
+              (SELECT COUNT(*)::int FROM players p WHERE p.team_id = t.id AND p.is_active = true) AS player_count
+       FROM tournament_enrollments te
+       JOIN teams t ON t.id = te.team_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY te.enrolled_at DESC`,
+      values,
+    );
+
+    return result.rows.map((r) => ({
+      id:          r.id,
+      teamId:      r.team_id,
+      teamName:    r.team_name,
+      teamShort:   r.team_short,
+      phone:       r.phone,
+      email:       r.email,
+      status:      r.status,
+      enrolledAt:  r.enrolled_at.toISOString(),
+      playerCount: r.player_count,
+    }));
+  }
+
+  async updateEnrollmentStatus(tournamentId: string, enrollmentId: string, status: string): Promise<void> {
+    await this.pool.query(
+      `UPDATE tournament_enrollments SET status = $1 WHERE id = $2 AND tournament_id = $3`,
+      [status, enrollmentId, tournamentId],
+    );
+  }
+
+  async deleteEnrollment(tournamentId: string, enrollmentId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM tournament_enrollments WHERE id = $1 AND tournament_id = $2`,
+      [enrollmentId, tournamentId],
+    );
   }
 }

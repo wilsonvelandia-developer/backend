@@ -18,6 +18,10 @@ export class TeamsService {
     return this.repo.findAll(filters);
   }
 
+  async getTeamsForUser(userId: string): Promise<unknown[]> {
+    return this.repo.findTeamsForUser(userId);
+  }
+
   async getById(id: string): Promise<Team> {
     return this.repo.findById(id);
   }
@@ -67,9 +71,15 @@ export class TeamsService {
   async createPlayer(teamId: string, dto: CreatePlayerDto): Promise<Player> {
     return this.repo.createPlayer(teamId, {
       teamId,
-      name:         dto.name,
-      jerseyNumber: dto.jerseyNumber,
-      position:     dto.position ?? null,
+      name:           dto.name,
+      jerseyNumber:   dto.jerseyNumber,
+      position:       dto.position ?? null,
+      documentType:   dto.documentType ?? null,
+      documentNumber: dto.documentNumber ?? null,
+      userId:         dto.userId ?? null,
+      email:          dto.email ?? null,
+      phone:          dto.phone ?? null,
+      birthDate:      dto.birthDate ?? null,
     });
   }
 

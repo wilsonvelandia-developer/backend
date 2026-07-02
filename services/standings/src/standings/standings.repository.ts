@@ -376,4 +376,167 @@ export class StandingsRepository {
       }>;
     }>;
   }
+
+  // ── Player Statistics ─────────────────────────────────────────────────────
+
+  /**
+   * Returns top scorers for a tournament, aggregated from match_scorers.
+   */
+  async getTopScorers(tournamentId: string, limit: number): Promise<Array<{
+    playerId: string; playerName: string; jerseyNumber: number;
+    teamId: string; teamName: string; totalGoals: number; matchesScored: number;
+  }>> {
+    const result = await this.pool.query<{
+      player_id: string; player_name: string; jersey_number: number;
+      team_id: string; team_name: string; total_goals: number; matches_scored: number;
+    }>(
+      `SELECT ms.player_id, p.name AS player_name, p.jersey_number,
+              ms.team_id, t.name AS team_name,
+              SUM(ms.points)::int AS total_goals,
+              COUNT(DISTINCT ms.match_id)::int AS matches_scored
+       FROM match_scorers ms
+       JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       JOIN matches m ON m.id = ms.match_id
+       JOIN phases ph ON ph.id = m.phase_id
+       WHERE ph.tournament_id = $1
+       GROUP BY ms.player_id, p.name, p.jersey_number, ms.team_id, t.name
+       ORDER BY total_goals DESC, matches_scored ASC
+       LIMIT $2`,
+      [tournamentId, limit],
+    );
+
+    return result.rows.map((r) => ({
+      playerId:      r.player_id,
+      playerName:    r.player_name,
+      jerseyNumber:  r.jersey_number,
+      teamId:        r.team_id,
+      teamName:      r.team_name,
+      totalGoals:    r.total_goals,
+      matchesScored: r.matches_scored,
+    }));
+  }
+
+  /**
+   * Returns individual player statistics across all matches.
+   */
+  async getPlayerStats(playerId: string): Promise<{
+    playerId: string; playerName: string; jerseyNumber: number;
+    teamName: string; position: string | null;
+    totalGoals: number; totalMatches: number;
+    yellowCards: number; redCards: number;
+    substitutionsIn: number; substitutionsOut: number;
+  }> {
+    // Basic info
+    const playerResult = await this.pool.query<{
+      id: string; name: string; jersey_number: number; position: string | null; team_id: string;
+    }>(`SELECT id, name, jersey_number, position, team_id FROM players WHERE id = $1`, [playerId]);
+
+    if (playerResult.rowCount === 0) {
+      return {
+        playerId, playerName: '', jerseyNumber: 0, teamName: '', position: null,
+        totalGoals: 0, totalMatches: 0, yellowCards: 0, redCards: 0,
+        substitutionsIn: 0, substitutionsOut: 0,
+      };
+    }
+
+    const player = playerResult.rows[0];
+
+    const teamResult = await this.pool.query<{ name: string }>(`SELECT name FROM teams WHERE id = $1`, [player.team_id]);
+    const teamName = teamResult.rows[0]?.name ?? '';
+
+    // Goals
+    const goalsResult = await this.pool.query<{ total: number }>(
+      `SELECT COALESCE(SUM(points), 0)::int AS total FROM match_scorers WHERE player_id = $1`,
+      [playerId],
+    );
+
+    // Matches played (appeared in lineups or substitutions)
+    const matchesResult = await this.pool.query<{ total: number }>(
+      `SELECT COUNT(DISTINCT match_id)::int AS total FROM (
+         SELECT match_id FROM match_lineups WHERE player_id = $1 AND is_starter = true
+         UNION
+         SELECT match_id FROM substitutions WHERE player_in_id = $1
+       ) AS m`,
+      [playerId],
+    );
+
+    // Cards
+    const cardsResult = await this.pool.query<{ code: string; count: number }>(
+      `SELECT st.code, COUNT(*)::int AS count
+       FROM match_sanctions ms
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       WHERE ms.player_id = $1
+       GROUP BY st.code`,
+      [playerId],
+    );
+    let yellowCards = 0;
+    let redCards = 0;
+    for (const row of cardsResult.rows) {
+      if (row.code === 'YELLOW') yellowCards = row.count;
+      if (row.code === 'RED') redCards = row.count;
+    }
+
+    // Substitutions
+    const subsInResult = await this.pool.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM substitutions WHERE player_in_id = $1`, [playerId],
+    );
+    const subsOutResult = await this.pool.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM substitutions WHERE player_out_id = $1`, [playerId],
+    );
+
+    return {
+      playerId:         player.id,
+      playerName:       player.name,
+      jerseyNumber:     player.jersey_number,
+      teamName,
+      position:         player.position,
+      totalGoals:       goalsResult.rows[0]?.total ?? 0,
+      totalMatches:     matchesResult.rows[0]?.total ?? 0,
+      yellowCards,
+      redCards,
+      substitutionsIn:  subsInResult.rows[0]?.count ?? 0,
+      substitutionsOut: subsOutResult.rows[0]?.count ?? 0,
+    };
+  }
+
+  /**
+   * Returns most sanctioned players for a tournament.
+   */
+  async getTopSanctioned(tournamentId: string): Promise<Array<{
+    playerId: string; playerName: string; jerseyNumber: number;
+    teamName: string; totalSanctions: number; yellowCards: number; redCards: number;
+  }>> {
+    const result = await this.pool.query<{
+      player_id: string; player_name: string; jersey_number: number;
+      team_name: string; total_sanctions: number; yellows: number; reds: number;
+    }>(
+      `SELECT ms.player_id, p.name AS player_name, p.jersey_number,
+              t.name AS team_name,
+              COUNT(*)::int AS total_sanctions,
+              COUNT(*) FILTER (WHERE st.code = 'YELLOW')::int AS yellows,
+              COUNT(*) FILTER (WHERE st.code = 'RED')::int AS reds
+       FROM match_sanctions ms
+       JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       JOIN matches m ON m.id = ms.match_id
+       JOIN phases ph ON ph.id = m.phase_id
+       WHERE ph.tournament_id = $1 AND ms.player_id IS NOT NULL
+       GROUP BY ms.player_id, p.name, p.jersey_number, t.name
+       ORDER BY total_sanctions DESC, reds DESC, yellows DESC
+       LIMIT 30`,
+      [tournamentId],
+    );
+
+    return result.rows.map((r) => ({
+      playerId:       r.player_id,
+      playerName:     r.player_name,
+      jerseyNumber:   r.jersey_number,
+      teamName:       r.team_name,
+      totalSanctions: r.total_sanctions,
+      yellowCards:    r.yellows,
+      redCards:       r.reds,
+    }));
+  }
 }

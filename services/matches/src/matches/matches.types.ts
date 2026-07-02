@@ -113,6 +113,8 @@ export interface SportRules {
   periodsPerMatch:    number;
   maxSubstitutions:   number | null;  // null = unlimited
   hasRotation:        boolean;
+  playersPerTeam:     number;
+  minPlayersPerTeam:  number | null;  // null = same as playersPerTeam
 }
 
 // ── Tournament Substitution Rules (loaded alongside sport rules) ──────────────

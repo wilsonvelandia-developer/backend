@@ -4,8 +4,8 @@
   "description": "Database migrations for tournament platform",
   "private": true,
   "scripts": {
-    "migrate:up": "node-pg-migrate up",
-    "migrate:down": "node-pg-migrate down",
+    "migrate:up": "node-pg-migrate up --envPath ../.env",
+    "migrate:down": "node-pg-migrate down --envPath ../.env",
     "migrate:create": "node-pg-migrate create",
     "seed": "node -r ts-node/register src/seed.ts"
   },

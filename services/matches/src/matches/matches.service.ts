@@ -110,6 +110,14 @@ export class MatchesService {
     return this.repo.getScorers(matchId);
   }
 
+  async undoLastScorer(matchId: string): Promise<void> {
+    return this.repo.deleteLastScorer(matchId);
+  }
+
+  async undoLastEvent(matchId: string): Promise<void> {
+    return this.repo.deleteLastEvent(matchId);
+  }
+
   // ── Match Setup ───────────────────────────────────────────────────────────
 
   async saveSetup(matchId: string, dto: MatchSetupDto): Promise<void> {
@@ -128,5 +136,37 @@ export class MatchesService {
 
   async getMatchLineup(matchId: string, teamId: string, periodNumber?: number): Promise<MatchLineupPlayer[]> {
     return this.repo.getMatchLineup(matchId, teamId, periodNumber);
+  }
+
+  // ── Sport Rules ───────────────────────────────────────────────────────────
+
+  async getSportRules(matchId: string): Promise<unknown> {
+    const rules = await this.repo.loadSportRules(matchId);
+    return rules;
+  }
+
+  // ── Match Referees ────────────────────────────────────────────────────────
+
+  /**
+   * Get matches filtered by referee's assigned tournaments.
+   * Only returns matches from tournaments where the user is staff with role 'referee'.
+   */
+  async getMatchesForReferee(userId: string, status?: string): Promise<Match[]> {
+    return this.repo.findMatchesForReferee(userId, status);
+  }
+
+  /** Get referees assigned to a specific match. */
+  async getMatchReferees(matchId: string): Promise<unknown[]> {
+    return this.repo.getMatchReferees(matchId);
+  }
+
+  /** Assign a referee to a match. Validates they're staff of the tournament. */
+  async assignReferee(matchId: string, userId: string, refereeRole: string): Promise<unknown> {
+    return this.repo.assignReferee(matchId, userId, refereeRole);
+  }
+
+  /** Remove a referee assignment from a match. */
+  async removeReferee(matchId: string, userId: string): Promise<void> {
+    return this.repo.removeReferee(matchId, userId);
   }
 }

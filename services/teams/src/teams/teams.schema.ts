@@ -60,7 +60,15 @@ const playerBaseSchema = z.object({
     .default(null),
 });
 
-export const createPlayerSchema = playerBaseSchema;
+export const createPlayerSchema = playerBaseSchema.extend({
+  // New fields for player-user linking
+  documentType:   z.string().max(20).nullable().default(null),
+  documentNumber: z.string().max(30).nullable().default(null),
+  userId:         z.string().uuid().nullable().default(null),
+  email:          z.string().email().nullable().default(null),
+  phone:          z.string().max(30).nullable().default(null),
+  birthDate:      z.string().nullable().default(null),
+});
 
 export const updatePlayerSchema = playerBaseSchema
   .extend({ isActive: z.boolean().optional() })

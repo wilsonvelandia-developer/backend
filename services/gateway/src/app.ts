@@ -110,6 +110,7 @@ export function createApp() {
   // Wraps { data } → { data, success: true, message: '' }
   // Applied before proxy so it intercepts the proxied response.
   app.use('/api', responseNormalizeMiddleware);
+  app.use('/public', responseNormalizeMiddleware);
 
   // ── Proxied microservice routes (JWT required) ─────────────────────────────
   app.use(proxyRouter);

@@ -79,6 +79,7 @@ interface UserResponse {
   phone: string | null;
   avatarUrl: string | null;
   roles: string[];
+  mustChangePassword: boolean;
 }
 
 async function getUserWithRoles(userId: string): Promise<UserResponse | null> {
@@ -95,12 +96,13 @@ async function getUserWithRoles(userId: string): Promise<UserResponse | null> {
 
   const user = userResult.rows[0];
   return {
-    id:        user.id,
-    email:     user.email,
-    name:      user.name,
-    phone:     user.phone,
-    avatarUrl: user.avatar_url,
-    roles:     rolesResult.rows.map((r) => r.role_id),
+    id:                  user.id,
+    email:               user.email,
+    name:                user.name,
+    phone:               user.phone,
+    avatarUrl:           user.avatar_url,
+    roles:               rolesResult.rows.map((r) => r.role_id),
+    mustChangePassword:  (user as unknown as Record<string, unknown>)['must_change_password'] as boolean ?? false,
   };
 }
 
@@ -173,6 +175,44 @@ router.post('/login', async (req: Request, res: Response, next: NextFunction) =>
 router.post('/logout', (_req: Request, res: Response) => {
   res.clearCookie(COOKIE_NAME, { path: '/' });
   res.json({ data: null, success: true, message: 'Sesión cerrada' });
+});
+
+// ── POST /auth/change-password ────────────────────────────────────────────────
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword:     z.string().min(6, 'La nueva contraseña debe tener al menos 6 caracteres'),
+});
+
+router.post('/change-password', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const payload = verifyTokenFromCookie(req);
+    const userId = payload['sub'] as string;
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+    // Verify current password
+    const userResult = await pool.query<UserRow>(
+      `SELECT password_hash FROM users WHERE id = $1`,
+      [userId],
+    );
+    if (userResult.rowCount === 0) return next(new UnauthorizedError('User not found'));
+
+    const valid = await bcrypt.compare(currentPassword, userResult.rows[0].password_hash);
+    if (!valid) return next(new UnauthorizedError('La contraseña actual es incorrecta'));
+
+    // Update password and clear must_change_password flag
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      `UPDATE users SET password_hash = $1, must_change_password = false, updated_at = NOW() WHERE id = $2`,
+      [newHash, userId],
+    );
+
+    logger.info({ userId }, 'Password changed');
+    res.json({ data: null, success: true, message: 'Contraseña actualizada' });
+  } catch (err) {
+    if (err instanceof ZodError) return next(new ValidationError('Datos inválidos', parseZodError(err)));
+    next(err);
+  }
 });
 
 // ── GET /auth/me ──────────────────────────────────────────────────────────────

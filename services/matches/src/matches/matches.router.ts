@@ -43,6 +43,22 @@ export function buildMatchesRouter(service: MatchesService): Router {
 
   // ── Match CRUD & lifecycle ────────────────────────────────────────────────
 
+  // GET /matches/for-referee — matches from referee's assigned tournaments
+  router.get('/for-referee', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.headers['x-user-id'] as string | undefined;
+      if (!userId) {
+        res.status(401).json({ data: null, success: false, message: 'User ID required' });
+        return;
+      }
+      const status = req.query['status'] as string | undefined;
+      const matches = await service.getMatchesForReferee(userId, status);
+      res.json({ data: matches });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listMatchesSchema.parse(req.query);
@@ -314,6 +330,28 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  router.delete('/:id/scorers/last', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      await service.undoLastScorer(id);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.delete('/:id/events/last', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      await service.undoLastEvent(id);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
   // ── Match Setup ───────────────────────────────────────────────────────────
 
   router.put('/:id/setup', async (req: Request, res: Response, next: NextFunction) => {
@@ -363,6 +401,58 @@ export function buildMatchesRouter(service: MatchesService): Router {
       res.json({ data: lineup });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Sport Rules (public — used by referee panel) ──────────────────────────
+
+  router.get('/:id/sport-rules', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const rules = await service.getSportRules(id);
+      res.json({ data: rules });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Match Referees ────────────────────────────────────────────────────────
+
+  router.get('/:id/referees', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const referees = await service.getMatchReferees(id);
+      res.json({ data: referees });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  router.post('/:id/referees', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const { userId, refereeRole } = req.body as { userId: string; refereeRole?: string };
+      if (!userId) {
+        res.status(400).json({ data: null, success: false, message: 'userId is required' });
+        return;
+      }
+      const result = await service.assignReferee(id, userId, refereeRole ?? 'principal');
+      res.status(201).json({ data: result });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/:id/referees/:userId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const userId = req.params['userId'] as string;
+      await service.removeReferee(id, userId);
+      res.status(204).send();
+    } catch (err) {
       next(err);
     }
   });

@@ -34,6 +34,19 @@ export function buildTeamsRouter(service: TeamsService): Router {
 
   // ── Teams CRUD ────────────────────────────────────────────────────────────
 
+  // GET /teams/my-teams — get teams linked to the current user (via players.user_id)
+  router.get('/my-teams', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.headers['x-user-id'] as string | undefined;
+      if (!userId) {
+        res.json({ data: [] });
+        return;
+      }
+      const teams = await service.getTeamsForUser(userId);
+      res.json({ data: teams });
+    } catch (err) { next(err); }
+  });
+
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listTeamsSchema.parse(req.query);

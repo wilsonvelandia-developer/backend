@@ -8,6 +8,8 @@
     "services/*"
   ],
   "scripts": {
+    "build": "npm run build --workspace=shared && npm run build --workspaces --if-present",
+    "build:all": "npm run build --workspace=shared && npm run build --workspace=services/gateway && npm run build --workspace=services/sports && npm run build --workspace=services/tournaments && npm run build --workspace=services/teams && npm run build --workspace=services/matches && npm run build --workspace=services/standings",
     "test": "npm run test --workspace=services/matches",
     "test:all": "npm run test --workspaces --if-present",
     "db:up": "docker-compose up -d postgres",

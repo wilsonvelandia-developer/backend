@@ -39,13 +39,19 @@ export class MatchesRepository {
   async loadSportRules(matchId: string): Promise<SportRules> {
     const result = await this.pool.query<SportRules>(
       `SELECT s.id AS "sportId", s.slug AS "sportSlug",
-              s.has_sets AS "hasSets", s.sets_to_win AS "setsToWin",
-              s.points_per_set AS "pointsPerSet",
-              s.decisive_set_points AS "decisiveSetPoints",
-              s.win_margin AS "winMargin",
-              s.periods_per_match AS "periodsPerMatch",
-              s.max_substitutions AS "maxSubstitutions",
-              s.has_rotation AS "hasRotation"
+              COALESCE(t.has_sets_override, s.has_sets) AS "hasSets",
+              COALESCE(t.sets_to_win_override, s.sets_to_win) AS "setsToWin",
+              COALESCE(t.points_per_set_override, s.points_per_set) AS "pointsPerSet",
+              COALESCE(t.decisive_set_points_override, s.decisive_set_points) AS "decisiveSetPoints",
+              COALESCE(t.win_margin_override, s.win_margin) AS "winMargin",
+              COALESCE(t.periods_per_match_override, s.periods_per_match) AS "periodsPerMatch",
+              CASE
+                WHEN t.max_substitutions_override = -1 THEN NULL
+                ELSE COALESCE(t.max_substitutions_override, t.max_subs_override, s.max_substitutions)
+              END AS "maxSubstitutions",
+              COALESCE(t.has_rotation_override, s.has_rotation) AS "hasRotation",
+              COALESCE(t.players_per_team_override, s.players_per_team) AS "playersPerTeam",
+              t.min_players_per_team AS "minPlayersPerTeam"
        FROM matches m
        JOIN phases p ON p.id = m.phase_id
        JOIN tournaments t ON t.id = p.tournament_id
@@ -840,6 +846,136 @@ export class MatchesRepository {
       [matchId],
     );
     return result.rows.map(mapScorerRow);
+  }
+
+  /** Delete the most recent scorer entry for a match. */
+  async deleteLastScorer(matchId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM match_scorers WHERE id = (
+         SELECT id FROM match_scorers WHERE match_id = $1 ORDER BY created_at DESC LIMIT 1
+       )`,
+      [matchId],
+    );
+  }
+
+  /** Delete the most recent event entry for a match. */
+  async deleteLastEvent(matchId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM match_events WHERE id = (
+         SELECT id FROM match_events WHERE match_id = $1 ORDER BY created_at DESC LIMIT 1
+       )`,
+      [matchId],
+    );
+  }
+
+  // ── Match Referees ──────────────────────────────────────────────────────────
+
+  /**
+   * Find matches from tournaments where the user is assigned as referee staff.
+   * Optionally filter by match status.
+   */
+  async findMatchesForReferee(userId: string, status?: string): Promise<Match[]> {
+    const conditions = [
+      `ts.user_id = $1`,
+      `ts.staff_role = 'referee'`,
+    ];
+    const values: unknown[] = [userId];
+    let idx = 2;
+
+    if (status) {
+      conditions.push(`m.status = $${idx++}`);
+      values.push(status);
+    }
+
+    const result = await this.pool.query<MatchRow & {
+      tournament_name: string; sport_name: string; category: string | null;
+    }>(
+      `SELECT DISTINCT m.*,
+              t.name AS tournament_name,
+              s.name AS sport_name,
+              t.category
+       FROM matches m
+       JOIN phases p ON p.id = m.phase_id
+       JOIN tournaments t ON t.id = p.tournament_id
+       JOIN sports s ON s.id = t.sport_id
+       JOIN tournament_staff ts ON ts.tournament_id = p.tournament_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY m.scheduled_at ASC NULLS LAST, m.created_at ASC`,
+      values,
+    );
+    return result.rows.map((row) => ({
+      ...mapMatchRow(row),
+      tournamentName: row.tournament_name,
+      sportName: row.sport_name,
+      category: row.category,
+    }));
+  }
+
+  /**
+   * Get referees assigned to a specific match with user info.
+   */
+  async getMatchReferees(matchId: string): Promise<Array<{
+    userId: string; userName: string; email: string; refereeRole: string; assignedAt: string;
+  }>> {
+    const result = await this.pool.query<{
+      user_id: string; name: string; email: string; referee_role: string; assigned_at: Date;
+    }>(
+      `SELECT mr.user_id, u.name, u.email, mr.referee_role, mr.assigned_at
+       FROM match_referees mr
+       JOIN users u ON u.id = mr.user_id
+       WHERE mr.match_id = $1
+       ORDER BY mr.referee_role ASC, mr.assigned_at ASC`,
+      [matchId],
+    );
+    return result.rows.map((r) => ({
+      userId:      r.user_id,
+      userName:    r.name,
+      email:       r.email,
+      refereeRole: r.referee_role,
+      assignedAt:  r.assigned_at.toISOString(),
+    }));
+  }
+
+  /**
+   * Assign a referee to a match.
+   * Validates the user is staff with role 'referee' in the match's tournament.
+   */
+  async assignReferee(matchId: string, userId: string, refereeRole: string): Promise<{
+    matchId: string; userId: string; refereeRole: string;
+  }> {
+    // Verify user is referee staff of this match's tournament
+    const staffCheck = await this.pool.query<{ id: string }>(
+      `SELECT ts.id
+       FROM tournament_staff ts
+       JOIN phases p ON p.tournament_id = ts.tournament_id
+       JOIN matches m ON m.phase_id = p.id
+       WHERE m.id = $1 AND ts.user_id = $2 AND ts.staff_role = 'referee'`,
+      [matchId, userId],
+    );
+    if (staffCheck.rowCount === 0) {
+      throw new BusinessRuleError(
+        'El usuario no está registrado como árbitro en el torneo de este partido',
+      );
+    }
+
+    await this.pool.query(
+      `INSERT INTO match_referees (match_id, user_id, referee_role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (match_id, user_id) DO UPDATE SET referee_role = $3`,
+      [matchId, userId, refereeRole],
+    );
+
+    return { matchId, userId, refereeRole };
+  }
+
+  /**
+   * Remove a referee assignment from a match.
+   */
+  async removeReferee(matchId: string, userId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM match_referees WHERE match_id = $1 AND user_id = $2`,
+      [matchId, userId],
+    );
   }
 
   // ── Match Setup ───────────────────────────────────────────────────────────

@@ -16,6 +16,8 @@ const VOLLEYBALL_RULES: SportRules = {
   periodsPerMatch: 5,
   maxSubstitutions: 6,
   hasRotation: true,
+  playersPerTeam: 6,
+  minPlayersPerTeam: null,
 };
 
 /** Football: 2 halves, no point limit, max 5 subs, no rotation. */
@@ -30,6 +32,8 @@ const FOOTBALL_RULES: SportRules = {
   periodsPerMatch: 2,
   maxSubstitutions: 5,
   hasRotation: false,
+  playersPerTeam: 11,
+  minPlayersPerTeam: null,
 };
 
 /** Basketball: 4 quarters, no point limit, unlimited subs, no rotation. */
@@ -44,6 +48,8 @@ const BASKETBALL_RULES: SportRules = {
   periodsPerMatch: 4,
   maxSubstitutions: null,
   hasRotation: false,
+  playersPerTeam: 5,
+  minPlayersPerTeam: null,
 };
 
 /** Tennis: best-of-3 sets, 6 games/set, no decisive set points, no subs. */
@@ -58,6 +64,8 @@ const TENNIS_RULES: SportRules = {
   periodsPerMatch: 3,
   maxSubstitutions: 0,
   hasRotation: false,
+  playersPerTeam: 1,
+  minPlayersPerTeam: null,
 };
 
 /** Helper to create a MatchPeriodRow for tests. */

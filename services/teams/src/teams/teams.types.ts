@@ -101,10 +101,17 @@ export function mapPlayerRow(row: PlayerRow): Player {
 }
 
 export interface CreatePlayerInput {
-  teamId:       string;
-  name:         string;
-  jerseyNumber: number;
-  position:     string | null;
+  teamId:         string;
+  name:           string;
+  jerseyNumber:   number;
+  position:       string | null;
+  // Player-user linking fields
+  documentType?:   string | null;
+  documentNumber?: string | null;
+  userId?:         string | null;
+  email?:          string | null;
+  phone?:          string | null;
+  birthDate?:      string | null;
 }
 
 export interface UpdatePlayerInput {

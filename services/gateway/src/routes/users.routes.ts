@@ -160,6 +160,41 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// ── GET /users/by-document/:documentNumber — search user by document ─────────
+
+router.get('/by-document/:documentNumber', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const documentNumber = req.params['documentNumber'] as string;
+    if (!documentNumber || documentNumber.trim().length < 3) {
+      res.json({ data: null, success: true, message: 'No encontrado' });
+      return;
+    }
+
+    const result = await pool.query<UserRow>(
+      `SELECT id, email, name, first_name, second_name, first_last_name, second_last_name,
+              document_type, document_number, birth_date, phone, photo_url, avatar_url,
+              is_active, created_at, updated_at
+       FROM users WHERE document_number = $1 AND is_active = TRUE LIMIT 1`,
+      [documentNumber.trim()],
+    );
+
+    if (result.rowCount === 0) {
+      res.json({ data: null, success: true, message: 'No encontrado' });
+      return;
+    }
+
+    const rolesResult = await pool.query<{ role_id: string }>(
+      `SELECT role_id FROM user_roles WHERE user_id = $1`,
+      [result.rows[0].id],
+    );
+
+    const user = mapUserRow(result.rows[0], rolesResult.rows.map((r) => r.role_id));
+    res.json({ data: user, success: true, message: 'Usuario encontrado' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /users/:id — get single user ─────────────────────────────────────────
 
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {

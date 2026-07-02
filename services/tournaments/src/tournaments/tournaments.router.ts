@@ -241,5 +241,215 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     } catch (err) { next(err); }
   });
 
+  // ── Venues CRUD ────────────────────────────────────────────────────────────
+
+  router.get('/:id/venues', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getVenues(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/venues', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const body = req.body as { name: string; address?: string; locationUrl?: string; capacity?: number; surfaceType?: string };
+      const venue = await service.createVenue(id, body);
+      res.status(201).json({ data: venue });
+    } catch (err) { next(err); }
+  });
+
+  router.put('/:id/venues/:venueId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const venueId = req.params['venueId'] as string;
+      const body = req.body as { name?: string; address?: string; locationUrl?: string; capacity?: number; surfaceType?: string; isActive?: boolean };
+      const venue = await service.updateVenue(venueId, body);
+      res.json({ data: venue });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:id/venues/:venueId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const venueId = req.params['venueId'] as string;
+      await service.deleteVenue(venueId);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Announcements CRUD ────────────────────────────────────────────────────
+
+  router.get('/:id/announcements', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getAnnouncements(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/announcements', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userId = req.headers['x-user-id'] as string ?? '';
+      const body = req.body as { title: string; content: string; priority?: string; isPinned?: boolean };
+      const ann = await service.createAnnouncement(id, userId, body);
+      res.status(201).json({ data: ann });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:id/announcements/:annId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const annId = req.params['annId'] as string;
+      await service.deleteAnnouncement(annId);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Payments CRUD ─────────────────────────────────────────────────────────
+
+  router.get('/:id/payments', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getPayments(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/payments', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userId = req.headers['x-user-id'] as string ?? '';
+      const body = req.body as { teamId: string; amount: number; paymentMethod?: string; reference?: string; notes?: string };
+      const payment = await service.createPayment(id, userId, body);
+      res.status(201).json({ data: payment });
+    } catch (err) { next(err); }
+  });
+
+  router.put('/:id/payments/:paymentId/status', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const paymentId = req.params['paymentId'] as string;
+      const { status } = req.body as { status: string };
+      await service.updatePaymentStatus(paymentId, status);
+      res.json({ data: { paymentId, status }, success: true, message: 'Estado actualizado' });
+    } catch (err) { next(err); }
+  });
+
+  // ── Gallery CRUD ──────────────────────────────────────────────────────────
+
+  router.get('/:id/gallery', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const result = await service.getGallery(id);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/gallery', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userId = req.headers['x-user-id'] as string ?? '';
+      const body = req.body as { url: string; thumbnailUrl?: string; caption?: string; matchId?: string; teamId?: string };
+      const photo = await service.addPhoto(id, userId, body);
+      res.status(201).json({ data: photo });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:id/gallery/:photoId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const photoId = req.params['photoId'] as string;
+      await service.deletePhoto(photoId);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Enrollment Management ───────────────────────────────────────────────────
+
+  router.get('/:id/enrollments', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const status = req.query['status'] as string | undefined;
+      const result = await service.getEnrollments(id, status);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.put('/:id/enrollments/:enrollmentId/status', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const enrollmentId = req.params['enrollmentId'] as string;
+      const { status } = req.body as { status: string };
+      if (!status || !['active', 'withdrawn', 'disqualified', 'pending', 'rejected'].includes(status)) {
+        return next(new ValidationError('status must be: active, pending, withdrawn, disqualified, or rejected'));
+      }
+      await service.updateEnrollmentStatus(id, enrollmentId, status);
+      res.json({ data: { enrollmentId, status }, success: true, message: 'Estado actualizado' });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:id/enrollments/:enrollmentId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const enrollmentId = req.params['enrollmentId'] as string;
+      await service.deleteEnrollment(id, enrollmentId);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Tournament Staff (referees, observers) ─────────────────────────────────
+
+  router.get('/:id/staff', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const role = req.query['role'] as string | undefined;
+      const result = await service.getStaff(id, role);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.post('/:id/staff', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const { userId, staffRole } = req.body as { userId: string; staffRole: string };
+      if (!userId || !staffRole) {
+        return next(new ValidationError('userId and staffRole are required'));
+      }
+      await service.registerStaff(id, userId, staffRole);
+      const result = await service.getStaff(id);
+      res.status(201).json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  router.delete('/:id/staff/:userId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userId = req.params['userId'] as string;
+      await service.removeStaff(id, userId);
+      res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Public enrollment (no auth required — routed via /public) ─────────────
+
+  router.post('/:id/enroll', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const body = req.body as {
+        teamName: string;
+        shortName?: string;
+        contactName: string;
+        contactPhone: string;
+        contactEmail?: string;
+        players: Array<{ name: string; jerseyNumber: number; position?: string }>;
+      };
+
+      if (!body.teamName || !body.contactName || !body.contactPhone) {
+        return next(new ValidationError('Campos requeridos: teamName, contactName, contactPhone'));
+      }
+
+      const result = await service.enrollTeam(id, body);
+      res.status(201).json({ data: result });
+    } catch (err) { next(err); }
+  });
+
   return router;
 }
