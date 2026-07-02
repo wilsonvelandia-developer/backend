@@ -38,11 +38,15 @@ export const config = {
   },
 
   services: {
-    sports:      optionalEnv('SPORTS_SERVICE_URL',      'http://localhost:3001'),
-    tournaments: optionalEnv('TOURNAMENTS_SERVICE_URL', 'http://localhost:3002'),
-    teams:       optionalEnv('TEAMS_SERVICE_URL',       'http://localhost:3003'),
-    matches:     optionalEnv('MATCHES_SERVICE_URL',     'http://localhost:3004'),
-    standings:   optionalEnv('STANDINGS_SERVICE_URL',   'http://localhost:3005'),
+    sports:        optionalEnv('SPORTS_SERVICE_URL',        'http://localhost:3001'),
+    tournaments:   optionalEnv('TOURNAMENTS_SERVICE_URL',   'http://localhost:3002'),
+    teams:         optionalEnv('TEAMS_SERVICE_URL',         'http://localhost:3003'),
+    matches:       optionalEnv('MATCHES_SERVICE_URL',       'http://localhost:3004'),
+    standings:     optionalEnv('STANDINGS_SERVICE_URL',     'http://localhost:3005'),
+    venues:        optionalEnv('VENUES_SERVICE_URL',        'http://localhost:3006'),
+    announcements: optionalEnv('ANNOUNCEMENTS_SERVICE_URL', 'http://localhost:3007'),
+    payments:      optionalEnv('PAYMENTS_SERVICE_URL',      'http://localhost:3008'),
+    gallery:       optionalEnv('GALLERY_SERVICE_URL',       'http://localhost:3009'),
   },
 
   rateLimit: {

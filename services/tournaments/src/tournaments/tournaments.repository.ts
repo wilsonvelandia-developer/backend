@@ -529,6 +529,149 @@ export class TournamentsRepository {
     return allMatches;
   }
 
+  /**
+   * Generates knockout (elimination) phase matches from group standings.
+   * Takes the top N teams per group and creates single-elimination bracket matches.
+   */
+  async generateKnockoutFromStandings(
+    tournamentId: string,
+    config: {
+      teamsPerGroup?: number;
+      startDate?: string;
+      matchDurationMinutes?: number;
+      includeThirdPlace?: boolean;
+    },
+  ): Promise<unknown[]> {
+    const teamsPerGroup = config.teamsPerGroup ?? 2;
+
+    // Load tournament
+    const tResult = await this.pool.query<TournamentRow>(
+      `SELECT * FROM tournaments WHERE id = $1`, [tournamentId],
+    );
+    if (tResult.rowCount === 0) throw new NotFoundError('Tournament', tournamentId);
+    const tournament = tResult.rows[0];
+
+    // Load standings for the group phase
+    const standingsResult = await this.pool.query<{
+      team_id: string; group_name: string; points: number;
+      score_for: number; score_against: number;
+    }>(
+      `SELECT s.team_id, tg.group_name, s.points, s.score_for, s.score_against
+       FROM standings s
+       JOIN phases p ON p.id = s.phase_id
+       JOIN team_groups tg ON tg.team_id = s.team_id AND tg.tournament_id = p.tournament_id
+       WHERE p.tournament_id = $1 AND p.name = 'Fase de Grupos'
+       ORDER BY tg.group_name, s.points DESC, (s.score_for - s.score_against) DESC, s.score_for DESC`,
+      [tournamentId],
+    );
+
+    if (standingsResult.rowCount === 0) {
+      throw new BusinessRuleError('No hay posiciones calculadas. Finaliza los partidos de grupo primero.');
+    }
+
+    // Get top N per group
+    const groupMap = new Map<string, string[]>();
+    for (const row of standingsResult.rows) {
+      if (!groupMap.has(row.group_name)) groupMap.set(row.group_name, []);
+      const g = groupMap.get(row.group_name)!;
+      if (g.length < teamsPerGroup) g.push(row.team_id);
+    }
+
+    // Flatten qualified teams in seeded order (1st of A, 1st of B, 2nd of A, 2nd of B...)
+    const groups = [...groupMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const qualifiedTeams: string[] = [];
+    for (let pos = 0; pos < teamsPerGroup; pos++) {
+      for (const [, teams] of groups) {
+        if (teams[pos]) qualifiedTeams.push(teams[pos]);
+      }
+    }
+
+    if (qualifiedTeams.length < 2) {
+      throw new BusinessRuleError('Se necesitan al menos 2 equipos clasificados para generar eliminatoria.');
+    }
+
+    // Create or find "Fase Eliminatoria" phase
+    let phaseResult = await this.pool.query<PhaseRow>(
+      `SELECT * FROM phases WHERE tournament_id = $1 AND format = 'single_elim' LIMIT 1`,
+      [tournamentId],
+    );
+    if (phaseResult.rowCount === 0) {
+      const maxOrder = await this.pool.query<{ max: number }>(
+        `SELECT COALESCE(MAX(order_index), 0) + 1 AS max FROM phases WHERE tournament_id = $1`,
+        [tournamentId],
+      );
+      phaseResult = await this.pool.query<PhaseRow>(
+        `INSERT INTO phases (tournament_id, name, format, order_index, status)
+         VALUES ($1, 'Fase Eliminatoria', 'single_elim', $2, 'pending') RETURNING *`,
+        [tournamentId, maxOrder.rows[0].max],
+      );
+    }
+    const phaseId = phaseResult.rows[0].id;
+
+    // Delete existing knockout matches (allows re-generation)
+    await this.pool.query(`DELETE FROM matches WHERE phase_id = $1`, [phaseId]);
+
+    // Generate bracket: pair 1st of group A vs last qualified of group B, etc.
+    // Standard seeding: 1A vs 2B, 1B vs 2A (for 2 groups)
+    // For 4+ teams: standard bracket seeding
+    const n = qualifiedTeams.length;
+    const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
+    const seeds = this.generateBracketSeeds(bracketSize);
+
+    // Map seeds to actual teams (BYE for empty slots)
+    const bracketTeams: (string | null)[] = seeds.map((s) =>
+      s <= n ? qualifiedTeams[s - 1] : null,
+    );
+
+    // Create round 1 matches
+    const startDate = config.startDate || tournament.start_date || new Date().toISOString().slice(0, 10);
+    const durationMin = config.matchDurationMinutes || tournament.match_duration_minutes || 90;
+    const createdMatches: unknown[] = [];
+    const roundNames = this.getRoundNames(bracketSize / 2);
+    let currentDate = startDate;
+    let matchIdx = 0;
+
+    for (let i = 0; i < bracketTeams.length; i += 2) {
+      const home = bracketTeams[i];
+      const away = bracketTeams[i + 1];
+
+      // Skip BYE matches (auto-advance)
+      if (!home || !away) continue;
+
+      const [h, m] = (tournament.first_match_time || '08:00').split(':').map(Number);
+      const startMinutes = h * 60 + m + (matchIdx * durationMin);
+      const hours = Math.floor(startMinutes / 60);
+      const minutes = startMinutes % 60;
+      const scheduledAt = `${currentDate}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+      const roundLabel = roundNames[0] || 'Ronda 1';
+
+      const result = await this.pool.query(
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at, venue, round)
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [phaseId, home, away, scheduledAt, tournament.venue_name || 'Cancha 1', roundLabel],
+      );
+      createdMatches.push(result.rows[0]);
+      matchIdx++;
+    }
+
+    return createdMatches;
+  }
+
+  /** Generates standard bracket seeding order for N slots. */
+  private generateBracketSeeds(n: number): number[] {
+    if (n === 1) return [1];
+    const prev = this.generateBracketSeeds(n / 2);
+    return prev.flatMap((seed) => [seed, n + 1 - seed]);
+  }
+
+  /** Maps bracket size to round labels. */
+  private getRoundNames(matchCount: number): string[] {
+    if (matchCount >= 8) return ['Octavos de final', 'Cuartos de final', 'Semifinal', 'Final'];
+    if (matchCount >= 4) return ['Cuartos de final', 'Semifinal', 'Final'];
+    if (matchCount >= 2) return ['Semifinal', 'Final'];
+    return ['Final'];
+  }
+
   // ── Cups ──────────────────────────────────────────────────────────────────
 
   async getCups(tournamentId: string): Promise<unknown[]> {

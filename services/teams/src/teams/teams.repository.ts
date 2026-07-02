@@ -67,10 +67,19 @@ export class TeamsRepository {
       conditions.push(`tournament_id = $${idx++}`);
       values.push(filters.tournamentId);
     }
+    if (filters.search) {
+      conditions.push(`(name ILIKE $${idx} OR short_name ILIKE $${idx})`);
+      values.push(`%${filters.search}%`);
+      idx++;
+    }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const offset = ((filters.page ?? 1) - 1) * (filters.pageSize ?? 50);
+    values.push(filters.pageSize ?? 50);
+    values.push(offset);
+
     const result = await this.pool.query<TeamRow>(
-      `SELECT * FROM teams ${where} ORDER BY name ASC`,
+      `SELECT * FROM teams ${where} ORDER BY name ASC LIMIT $${idx++} OFFSET $${idx}`,
       values,
     );
     return result.rows.map(mapTeamRow);

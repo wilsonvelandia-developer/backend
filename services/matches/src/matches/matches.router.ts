@@ -59,6 +59,51 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  // GET /matches/sanctions?tournamentId=X — aggregated sanctions for a tournament
+  router.get('/sanctions', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tournamentId = req.query['tournamentId'] as string | undefined;
+      if (!tournamentId) {
+        res.status(400).json({ data: null, success: false, message: 'tournamentId is required' });
+        return;
+      }
+      const sanctions = await service.getTournamentSanctions(tournamentId);
+      res.json({ data: sanctions });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /matches/scorers?tournamentId=X — top scorers for a tournament
+  router.get('/scorers', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tournamentId = req.query['tournamentId'] as string | undefined;
+      if (!tournamentId) {
+        res.status(400).json({ data: null, success: false, message: 'tournamentId is required' });
+        return;
+      }
+      const scorers = await service.getTournamentScorers(tournamentId);
+      res.json({ data: scorers });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /matches/referees?refereeId=X — assignment history for a referee
+  router.get('/referees', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const refereeId = req.query['refereeId'] as string | undefined;
+      if (!refereeId) {
+        res.status(400).json({ data: null, success: false, message: 'refereeId is required' });
+        return;
+      }
+      const assignments = await service.getRefereeAssignments(refereeId);
+      res.json({ data: assignments });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listMatchesSchema.parse(req.query);

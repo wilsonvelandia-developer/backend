@@ -136,13 +136,31 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
   try {
     if (!requireAdminOrOrganizer(req, next)) return;
 
-    const usersResult = await pool.query<UserRow>(
-      `SELECT id, email, name, first_name, second_name, first_last_name, second_last_name,
-              document_type, document_number, birth_date, phone, photo_url, avatar_url,
-              document_front_url, document_back_url, eps_file_url,
-              is_active, created_at, updated_at
-       FROM users WHERE is_active = TRUE ORDER BY name`,
-    );
+    const roleFilter = req.query['role'] as string | undefined;
+
+    let usersResult;
+    if (roleFilter) {
+      // Filter users by role
+      usersResult = await pool.query<UserRow>(
+        `SELECT DISTINCT u.id, u.email, u.name, u.first_name, u.second_name, u.first_last_name, u.second_last_name,
+                u.document_type, u.document_number, u.birth_date, u.phone, u.photo_url, u.avatar_url,
+                u.document_front_url, u.document_back_url, u.eps_file_url,
+                u.is_active, u.created_at, u.updated_at
+         FROM users u
+         JOIN user_roles ur ON ur.user_id = u.id
+         WHERE u.is_active = TRUE AND ur.role_id = $1
+         ORDER BY u.name`,
+        [roleFilter],
+      );
+    } else {
+      usersResult = await pool.query<UserRow>(
+        `SELECT id, email, name, first_name, second_name, first_last_name, second_last_name,
+                document_type, document_number, birth_date, phone, photo_url, avatar_url,
+                document_front_url, document_back_url, eps_file_url,
+                is_active, created_at, updated_at
+         FROM users WHERE is_active = TRUE ORDER BY name`,
+      );
+    }
 
     const users = await Promise.all(
       usersResult.rows.map(async (u) => {
@@ -150,7 +168,17 @@ router.get('/', async (req: Request, res: Response, next: NextFunction) => {
           `SELECT role_id FROM user_roles WHERE user_id = $1`,
           [u.id],
         );
-        return mapUserRow(u, rolesResult.rows.map((r) => r.role_id));
+        // Add computed fields for the frontend
+        const roles = rolesResult.rows.map((r) => r.role_id);
+        const matchCountResult = await pool.query<{ count: string }>(
+          `SELECT COUNT(*)::int as count FROM match_referees WHERE user_id = $1`,
+          [u.id],
+        );
+        return {
+          ...mapUserRow(u, roles),
+          matchCount: parseInt(matchCountResult.rows[0]?.count ?? '0', 10),
+          isAvailable: true,
+        };
       }),
     );
 

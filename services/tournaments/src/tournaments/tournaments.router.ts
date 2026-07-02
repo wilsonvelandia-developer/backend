@@ -201,6 +201,23 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     }
   });
 
+  // POST /tournaments/:id/generate-knockout — create knockout phase from group standings
+  router.post('/:id/generate-knockout', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const config = req.body as {
+        teamsPerGroup?: number;
+        startDate?: string;
+        matchDurationMinutes?: number;
+        includeThirdPlace?: boolean;
+      };
+      const matches = await service.generateKnockoutFromStandings(id, config);
+      res.status(201).json({ data: matches });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ── Cups CRUD ─────────────────────────────────────────────────────────────
 
   router.get('/:id/cups', async (req: Request, res: Response, next: NextFunction) => {

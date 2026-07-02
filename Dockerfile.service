@@ -1,0 +1,31 @@
+# Generic Dockerfile for microservices (build arg: SERVICE_NAME, SERVICE_PORT)
+# Usage: docker build --build-arg SERVICE_NAME=venues --build-arg SERVICE_PORT=3006 -f Dockerfile.service .
+
+ARG SERVICE_NAME=sports
+ARG SERVICE_PORT=3001
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+ARG SERVICE_NAME
+COPY package.json package-lock.json ./
+COPY shared/package.json shared/
+COPY services/${SERVICE_NAME}/package.json services/${SERVICE_NAME}/
+RUN npm ci --workspace=shared --workspace=services/${SERVICE_NAME}
+COPY shared/ shared/
+COPY services/${SERVICE_NAME}/ services/${SERVICE_NAME}/
+COPY tsconfig.base.json ./
+RUN npm run build --workspace=shared && npm run build --workspace=services/${SERVICE_NAME}
+
+FROM node:20-alpine
+WORKDIR /app
+ARG SERVICE_NAME
+ARG SERVICE_PORT
+ENV NODE_ENV=production
+COPY --from=builder /app/services/${SERVICE_NAME}/dist ./dist
+COPY --from=builder /app/services/${SERVICE_NAME}/package.json ./
+COPY --from=builder /app/shared/dist ./node_modules/@tournament/shared/dist
+COPY --from=builder /app/shared/package.json ./node_modules/@tournament/shared/
+COPY --from=builder /app/node_modules ./node_modules
+EXPOSE ${SERVICE_PORT}
+USER node
+CMD ["node", "dist/server.js"]

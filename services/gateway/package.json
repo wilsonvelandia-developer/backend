@@ -5,7 +5,7 @@
   "private": true,
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc --build --force",
+    "build": "tsc --build --force && node -e \"const{cpSync,mkdirSync}=require('fs');mkdirSync('dist/docs',{recursive:true});cpSync('src/docs/openapi.yaml','dist/docs/openapi.yaml')\"",
     "build:watch": "tsc --watch",
     "start": "node dist/server.js",
     "dev": "ts-node src/server.ts",
@@ -29,7 +29,9 @@
     "pino": "9.7.0",
     "pino-http": "10.4.0",
     "socket.io": "^4.8.1",
-    "uuid": "11.1.1"
+    "swagger-ui-express": "5.0.1",
+    "uuid": "11.1.1",
+    "yaml": "2.7.1"
   },
   "devDependencies": {
     "@types/bcrypt": "5.0.2",
@@ -43,6 +45,7 @@
     "@types/passport": "1.0.17",
     "@types/passport-jwt": "4.0.1",
     "@types/pg": "8.15.4",
+    "@types/swagger-ui-express": "4.1.8",
     "@types/uuid": "10.0.0",
     "ts-node": "10.9.2",
     "typescript": "5.8.3"

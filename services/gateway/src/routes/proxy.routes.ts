@@ -198,4 +198,40 @@ router.use(
     buildProxy(config.services.standings, 'standings')(req, res, next),
 );
 
+// ── Venues ──────────────────────────────────────────────────────────────────
+router.use(
+  '/api/venues',
+  authMiddleware,
+  blockReadOnlyWrites,
+  (req: Request, res: Response, next: NextFunction) =>
+    buildProxy(config.services.venues, 'venues')(req, res, next),
+);
+
+// ── Announcements ───────────────────────────────────────────────────────────
+router.use(
+  '/api/announcements',
+  authMiddleware,
+  blockReadOnlyWrites,
+  (req: Request, res: Response, next: NextFunction) =>
+    buildProxy(config.services.announcements, 'announcements')(req, res, next),
+);
+
+// ── Payments (organizer+ only) ──────────────────────────────────────────────
+router.use(
+  '/api/payments',
+  authMiddleware,
+  blockReadOnlyWrites,
+  (req: Request, res: Response, next: NextFunction) =>
+    buildProxy(config.services.payments, 'payments')(req, res, next),
+);
+
+// ── Gallery ─────────────────────────────────────────────────────────────────
+router.use(
+  '/api/gallery',
+  authMiddleware,
+  blockReadOnlyWrites,
+  (req: Request, res: Response, next: NextFunction) =>
+    buildProxy(config.services.gallery, 'gallery')(req, res, next),
+);
+
 export { router as proxyRouter };

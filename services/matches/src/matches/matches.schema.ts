@@ -20,6 +20,8 @@ export const listMatchesSchema = z.object({
   phaseId:    z.string().uuid().optional(),
   teamId:     z.string().uuid().optional(),
   status:     z.enum(['scheduled', 'in_progress', 'finished']).optional(),
+  page:       z.coerce.number().int().min(1).optional(),
+  pageSize:   z.coerce.number().int().min(1).max(500).optional(),
 });
 
 // ── Score update schema ───────────────────────────────────────────────────────

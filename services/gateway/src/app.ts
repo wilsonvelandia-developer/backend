@@ -3,6 +3,10 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { pinoHttp } from 'pino-http';
+import swaggerUi from 'swagger-ui-express';
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
+import { parse as parseYaml } from 'yaml';
 import { correlationMiddleware }         from './middleware/correlation.middleware.js';
 import { rateLimitMiddleware }           from './middleware/rate-limit.middleware.js';
 import { responseNormalizeMiddleware }   from './middleware/response-normalize.middleware.js';
@@ -10,6 +14,7 @@ import { authMiddleware }               from './middleware/auth.middleware.js';
 import { errorMiddleware }               from './middleware/error.middleware.js';
 import { authRouter }                    from './routes/auth.routes.js';
 import { usersRouter }                   from './routes/users.routes.js';
+import { notificationsRouter }           from './routes/notifications.routes.js';
 import { proxyRouter }                   from './routes/proxy.routes.js';
 import { logger }                        from './logger.js';
 import { config }                        from './config.js';
@@ -97,6 +102,24 @@ export function createApp() {
     });
   });
 
+  // ── Swagger / OpenAPI docs (public) ────────────────────────────────────────
+  try {
+    // Try dist/docs first (production), fallback to src/docs (development)
+    let specPath = resolve(__dirname, 'docs', 'openapi.yaml');
+    try { readFileSync(specPath); } catch {
+      specPath = resolve(__dirname, '..', 'src', 'docs', 'openapi.yaml');
+    }
+    const specContent = readFileSync(specPath, 'utf8');
+    const swaggerDocument = parseYaml(specContent) as Record<string, unknown>;
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'OlimpicApp API Docs',
+    }));
+    logger.info('Swagger UI mounted at /api-docs');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to load OpenAPI spec — /api-docs disabled');
+  }
+
   // ── Auth routes (public — no JWT required) ─────────────────────────────────
   // POST /auth/login  → sets httpOnly cookie
   // POST /auth/logout → clears httpOnly cookie
@@ -105,6 +128,9 @@ export function createApp() {
 
   // ── Users API (auth required, handled directly by gateway) ─────────────────
   app.use('/api/users', authMiddleware, usersRouter);
+
+  // ── Notifications API (auth required) ──────────────────────────────────────
+  app.use('/api/notifications', authMiddleware, notificationsRouter);
 
   // ── Response normalization for all proxied routes ──────────────────────────
   // Wraps { data } → { data, success: true, message: '' }

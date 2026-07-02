@@ -156,6 +156,22 @@ export class TournamentsService {
     return this.repo.generateGroupFixture(tournamentId, config);
   }
 
+  /**
+   * Generates knockout phase matches from group standings.
+   * Takes the top N teams per group and creates elimination brackets.
+   */
+  async generateKnockoutFromStandings(
+    tournamentId: string,
+    config: {
+      teamsPerGroup?: number;
+      startDate?: string;
+      matchDurationMinutes?: number;
+      includeThirdPlace?: boolean;
+    },
+  ): Promise<unknown[]> {
+    return this.repo.generateKnockoutFromStandings(tournamentId, config);
+  }
+
   // ── Cups ──────────────────────────────────────────────────────────────────
 
   async getCups(tournamentId: string): Promise<unknown[]> {

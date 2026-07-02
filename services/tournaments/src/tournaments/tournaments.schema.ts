@@ -102,9 +102,11 @@ export const phaseParamsSchema = z.object({
 // ── Query schemas ─────────────────────────────────────────────────────────────
 
 export const listTournamentsSchema = z.object({
-  sportId: z.string().uuid().optional(),
-  status:  z.enum(['draft', 'active', 'finished', 'suspended', 'cancelled', 'archived']).optional(),
-  season:  z.string().max(20).optional(),
+  sportId:  z.string().uuid().optional(),
+  status:   z.enum(['draft', 'active', 'finished', 'suspended', 'cancelled', 'archived']).optional(),
+  season:   z.string().max(20).optional(),
+  page:     z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(500).optional(),
 });
 
 // ── DTO types ─────────────────────────────────────────────────────────────────

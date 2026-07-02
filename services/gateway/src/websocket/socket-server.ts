@@ -4,6 +4,7 @@ import { verify } from 'jsonwebtoken';
 import { parse as parseCookie } from 'cookie';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { registerChatHandlers } from './chat-handlers.js';
 
 /**
  * JWT payload decoded from the auth_token cookie.
@@ -140,6 +141,9 @@ export function createSocketServer(httpServer: HttpServer): Server {
         }
       }
     });
+
+    // ── Chat handlers ───────────────────────────────────────────────────────
+    registerChatHandlers(io, socket);
   });
 
   return io;

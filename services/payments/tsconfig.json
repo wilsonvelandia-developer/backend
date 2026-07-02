@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "composite": true,
+    "paths": {
+      "@tournament/shared": ["../../shared/dist/index.d.ts"]
+    }
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../shared" }
+  ]
+}

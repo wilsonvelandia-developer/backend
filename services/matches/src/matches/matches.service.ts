@@ -169,4 +169,21 @@ export class MatchesService {
   async removeReferee(matchId: string, userId: string): Promise<void> {
     return this.repo.removeReferee(matchId, userId);
   }
+
+  // ── Tournament-level aggregates ───────────────────────────────────────────
+
+  /** Get all sanctions (cards) for a tournament with player/team info and suspension status. */
+  async getTournamentSanctions(tournamentId: string): Promise<unknown[]> {
+    return this.repo.findTournamentSanctions(tournamentId);
+  }
+
+  /** Get top scorers for a tournament with goals, assists, and matches played. */
+  async getTournamentScorers(tournamentId: string): Promise<unknown[]> {
+    return this.repo.findTournamentScorers(tournamentId);
+  }
+
+  /** Get all match assignments for a specific referee. */
+  async getRefereeAssignments(refereeId: string): Promise<unknown[]> {
+    return this.repo.findRefereeAssignments(refereeId);
+  }
 }

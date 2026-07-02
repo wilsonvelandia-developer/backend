@@ -1,0 +1,71 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [master, develop]
+    paths: ['backend/**']
+  pull_request:
+    branches: [master, develop]
+    paths: ['backend/**']
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: tournament_platform_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test_user -d tournament_platform_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test_user:test_password@localhost:5432/tournament_platform_test
+      JWT_SECRET: ci-test-secret-at-least-64-characters-long-for-testing-purposes-only
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared
+        run: npm run build --workspace=shared
+
+      - name: Build all services
+        run: npm run build --workspaces --if-present
+
+      - name: Run migrations
+        run: npm run migrate:up
+        working-directory: backend/db
+
+      - name: Test venues
+        run: npm run test --workspace=services/venues
+
+      - name: Test payments
+        run: npm run test --workspace=services/payments
+
+      - name: Test announcements
+        run: npm run test --workspace=services/announcements
+
+      - name: Test matches
+        run: npm run test --workspace=services/matches

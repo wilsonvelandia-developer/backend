@@ -1,0 +1,713 @@
+openapi: 3.0.3
+info:
+  title: OlimpicApp — Tournament Platform API
+  description: |
+    Multi-sport tournament management platform.
+    All endpoints require JWT authentication via httpOnly cookies unless marked as public.
+    The gateway proxies requests to internal microservices.
+  version: 1.0.0
+  contact:
+    name: Tournament Platform Team
+
+servers:
+  - url: http://localhost:3000
+    description: Local development gateway
+
+tags:
+  - name: Auth
+    description: Authentication (login, logout, session)
+  - name: Sports
+    description: Sport catalog and rule configurations
+  - name: Tournaments
+    description: Tournament CRUD and phases
+  - name: Teams
+    description: Team and player management
+  - name: Matches
+    description: Match scheduling, scoring, and events
+  - name: Standings
+    description: Standings computation and stats
+  - name: Venues
+    description: Physical locations for matches
+  - name: Announcements
+    description: Tournament announcements and notifications
+  - name: Payments
+    description: Team enrollment payments
+  - name: Gallery
+    description: Photo gallery for tournaments and matches
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: token
+  schemas:
+    ApiResponse:
+      type: object
+      properties:
+        data: {}
+        success:
+          type: boolean
+        message:
+          type: string
+    ApiError:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        correlationId:
+          type: string
+        details:
+          type: object
+    Sport:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        slug: { type: string }
+        playersPerTeam: { type: integer }
+        hasSets: { type: boolean }
+        setsToWin: { type: integer, nullable: true }
+        pointsPerSet: { type: integer, nullable: true }
+        periodsPerMatch: { type: integer }
+        maxSubstitutions: { type: integer, nullable: true }
+        hasRotation: { type: boolean }
+        iconUrl: { type: string, nullable: true }
+    Tournament:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        sportId: { type: string, format: uuid }
+        name: { type: string }
+        season: { type: string, nullable: true }
+        status: { type: string, enum: [draft, active, finished, suspended, cancelled, archived] }
+        startDate: { type: string, format: date-time, nullable: true }
+        category: { type: string, nullable: true }
+        numGroups: { type: integer, nullable: true }
+        expectedTeams: { type: integer, nullable: true }
+    Team:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        shortName: { type: string, nullable: true }
+        imageUrl: { type: string, nullable: true }
+        status: { type: string, enum: [active, inactive, suspended] }
+    Player:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        name: { type: string }
+        jerseyNumber: { type: integer }
+        position: { type: string, nullable: true }
+        isActive: { type: boolean }
+    Match:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        phaseId: { type: string, format: uuid }
+        homeTeamId: { type: string, format: uuid }
+        awayTeamId: { type: string, format: uuid }
+        scheduledAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [scheduled, in_progress, finished] }
+        winnerId: { type: string, format: uuid, nullable: true }
+    Venue:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        address: { type: string, nullable: true }
+        locationUrl: { type: string, nullable: true }
+        capacity: { type: integer, nullable: true }
+        surfaceType: { type: string, nullable: true }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    Announcement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid }
+        authorId: { type: string, format: uuid }
+        title: { type: string }
+        content: { type: string }
+        priority: { type: string, enum: [low, normal, high, urgent] }
+        isPinned: { type: boolean }
+        publishedAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid }
+        teamId: { type: string, format: uuid }
+        amount: { type: number, format: decimal }
+        currency: { type: string }
+        paymentMethod: { type: string, nullable: true }
+        reference: { type: string, nullable: true }
+        status: { type: string, enum: [pending, confirmed, rejected, refunded] }
+        paidAt: { type: string, format: date-time }
+    GalleryPhoto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        tournamentId: { type: string, format: uuid, nullable: true }
+        matchId: { type: string, format: uuid, nullable: true }
+        teamId: { type: string, format: uuid, nullable: true }
+        url: { type: string }
+        thumbnailUrl: { type: string, nullable: true }
+        caption: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+security:
+  - cookieAuth: []
+
+paths:
+  # ── Auth ─────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email/password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200': { description: Login successful, sets httpOnly cookie }
+        '401': { description: Invalid credentials }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (clear session cookie)
+      responses:
+        '200': { description: Session cleared }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current authenticated user
+      responses:
+        '200': { description: Current user info }
+        '401': { description: Not authenticated }
+
+  # ── Sports ───────────────────────────────────────
+  /api/sports:
+    get:
+      tags: [Sports]
+      summary: List all sports
+      responses:
+        '200':
+          description: List of sports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Sport' }
+    post:
+      tags: [Sports]
+      summary: Create a sport (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug, playersPerTeam, hasSets]
+              properties:
+                name: { type: string }
+                slug: { type: string }
+                playersPerTeam: { type: integer }
+                hasSets: { type: boolean }
+                setsToWin: { type: integer }
+                pointsPerSet: { type: integer }
+                periodsPerMatch: { type: integer }
+                iconUrl: { type: string }
+      responses:
+        '201': { description: Sport created }
+        '409': { description: Slug or name conflict }
+
+  /api/sports/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Sports]
+      summary: Get sport by ID
+      responses:
+        '200': { description: Sport details }
+        '404': { description: Not found }
+    put:
+      tags: [Sports]
+      summary: Update a sport (admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                playersPerTeam: { type: integer }
+      responses:
+        '200': { description: Sport updated }
+    delete:
+      tags: [Sports]
+      summary: Delete a sport (admin only)
+      responses:
+        '204': { description: Deleted }
+
+  # ── Tournaments ──────────────────────────────────
+  /api/tournaments:
+    get:
+      tags: [Tournaments]
+      summary: List tournaments
+      parameters:
+        - name: sportId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: season
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Tournament list }
+    post:
+      tags: [Tournaments]
+      summary: Create a tournament (organizer+)
+      responses:
+        '201': { description: Tournament created }
+
+  /api/tournaments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Tournaments]
+      summary: Get tournament by ID
+      responses:
+        '200': { description: Tournament details }
+    put:
+      tags: [Tournaments]
+      summary: Update tournament (organizer+)
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Tournaments]
+      summary: Delete tournament (admin)
+      responses:
+        '204': { description: Deleted }
+
+  # ── Teams ────────────────────────────────────────
+  /api/teams:
+    get:
+      tags: [Teams]
+      summary: List teams
+      parameters:
+        - name: tournamentId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Team list }
+    post:
+      tags: [Teams]
+      summary: Create a team (organizer+)
+      responses:
+        '201': { description: Team created }
+
+  /api/teams/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Teams]
+      summary: Get team by ID
+      responses:
+        '200': { description: Team details }
+    put:
+      tags: [Teams]
+      summary: Update team
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Teams]
+      summary: Delete team (admin)
+      responses:
+        '204': { description: Deleted }
+
+  /api/teams/{id}/players:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Teams]
+      summary: List players in a team
+      responses:
+        '200': { description: Player list }
+    post:
+      tags: [Teams]
+      summary: Add player to team
+      responses:
+        '201': { description: Player created }
+
+  # ── Matches ──────────────────────────────────────
+  /api/matches:
+    get:
+      tags: [Matches]
+      summary: List matches
+      parameters:
+        - name: phaseId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Match list }
+    post:
+      tags: [Matches]
+      summary: Schedule a match
+      responses:
+        '201': { description: Match created }
+
+  /api/matches/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Matches]
+      summary: Get match by ID (includes periods)
+      responses:
+        '200': { description: Match details }
+
+  # ── Standings ────────────────────────────────────
+  /api/standings:
+    get:
+      tags: [Standings]
+      summary: Get standings for a phase
+      parameters:
+        - name: phaseId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Standings list }
+
+  # ── Venues ──────────────────────────────────────
+  /api/venues:
+    get:
+      tags: [Venues]
+      summary: List venues
+      parameters:
+        - name: tournamentId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Venue list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Venue' }
+    post:
+      tags: [Venues]
+      summary: Create venue (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                tournamentId: { type: string, format: uuid, nullable: true }
+                name: { type: string, minLength: 2, maxLength: 200 }
+                address: { type: string, nullable: true }
+                locationUrl: { type: string, format: uri, nullable: true }
+                capacity: { type: integer, minimum: 1, nullable: true }
+                surfaceType: { type: string, nullable: true }
+      responses:
+        '201': { description: Venue created }
+
+  /api/venues/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Venues]
+      summary: Get venue by ID
+      responses:
+        '200': { description: Venue details }
+        '404': { description: Not found }
+    put:
+      tags: [Venues]
+      summary: Update venue (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                address: { type: string, nullable: true }
+                locationUrl: { type: string, nullable: true }
+                capacity: { type: integer, nullable: true }
+                surfaceType: { type: string, nullable: true }
+                isActive: { type: boolean }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Venues]
+      summary: Delete venue (admin only)
+      responses:
+        '204': { description: Deleted }
+
+  # ── Announcements ───────────────────────────────
+  /api/announcements:
+    get:
+      tags: [Announcements]
+      summary: List announcements
+      parameters:
+        - name: tournamentId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: priority
+          in: query
+          schema: { type: string, enum: [low, normal, high, urgent] }
+      responses:
+        '200':
+          description: Announcement list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Announcement' }
+    post:
+      tags: [Announcements]
+      summary: Create announcement (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tournamentId, title, content]
+              properties:
+                tournamentId: { type: string, format: uuid }
+                title: { type: string, minLength: 2, maxLength: 200 }
+                content: { type: string }
+                priority: { type: string, enum: [low, normal, high, urgent] }
+                isPinned: { type: boolean }
+      responses:
+        '201': { description: Announcement created }
+
+  /api/announcements/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Announcements]
+      summary: Get announcement by ID
+      responses:
+        '200': { description: Announcement details }
+    put:
+      tags: [Announcements]
+      summary: Update announcement (organizer+)
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Announcements]
+      summary: Delete announcement (admin only)
+      responses:
+        '204': { description: Deleted }
+
+  # ── Payments ─────────────────────────────────────
+  /api/payments:
+    get:
+      tags: [Payments]
+      summary: List payments
+      parameters:
+        - name: tournamentId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string, enum: [pending, confirmed, rejected, refunded] }
+      responses:
+        '200':
+          description: Payment list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Payment' }
+    post:
+      tags: [Payments]
+      summary: Record a payment (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tournamentId, teamId, amount]
+              properties:
+                tournamentId: { type: string, format: uuid }
+                teamId: { type: string, format: uuid }
+                amount: { type: number, minimum: 0.01 }
+                currency: { type: string, default: COP }
+                paymentMethod: { type: string }
+                reference: { type: string }
+                notes: { type: string }
+      responses:
+        '201': { description: Payment recorded }
+
+  /api/payments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Payments]
+      summary: Get payment by ID
+      responses:
+        '200': { description: Payment details }
+    put:
+      tags: [Payments]
+      summary: Update payment (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: { type: number }
+                paymentMethod: { type: string }
+                reference: { type: string }
+                status: { type: string, enum: [pending, confirmed, rejected, refunded] }
+                notes: { type: string }
+      responses:
+        '200': { description: Updated }
+    delete:
+      tags: [Payments]
+      summary: Delete payment (admin only)
+      responses:
+        '204': { description: Deleted }
+
+  # ── Gallery ──────────────────────────────────────
+  /api/gallery:
+    get:
+      tags: [Gallery]
+      summary: List gallery photos
+      parameters:
+        - name: tournamentId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: matchId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: teamId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Photo list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/GalleryPhoto' }
+    post:
+      tags: [Gallery]
+      summary: Upload photo metadata (organizer+)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                tournamentId: { type: string, format: uuid, nullable: true }
+                matchId: { type: string, format: uuid, nullable: true }
+                teamId: { type: string, format: uuid, nullable: true }
+                url: { type: string, format: uri }
+                thumbnailUrl: { type: string, format: uri, nullable: true }
+                caption: { type: string, maxLength: 500, nullable: true }
+      responses:
+        '201': { description: Photo record created }
+
+  /api/gallery/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Gallery]
+      summary: Get photo by ID
+      responses:
+        '200': { description: Photo details }
+    delete:
+      tags: [Gallery]
+      summary: Delete photo (admin only)
+      responses:
+        '204': { description: Deleted }

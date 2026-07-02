@@ -91,6 +91,9 @@ export const playerParamsSchema = z.object({
 
 export const listTeamsSchema = z.object({
   tournamentId: z.string().uuid().optional(),
+  search:       z.string().max(100).optional(),
+  page:         z.coerce.number().int().min(1).default(1),
+  pageSize:     z.coerce.number().int().min(1).max(500).default(50),
 });
 
 // ── DTO types ─────────────────────────────────────────────────────────────────

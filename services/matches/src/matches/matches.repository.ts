@@ -1092,4 +1092,98 @@ export class MatchesRepository {
     );
     return result.rows.map(mapLineupRow);
   }
+
+  // ── Tournament-level aggregates ───────────────────────────────────────────
+
+  /**
+   * Returns all sanctions for a tournament with player/team info and suspension detection.
+   * A player is considered suspended if they have a RED card or accumulated yellows >= limit.
+   */
+  async findTournamentSanctions(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT ms.id, ms.player_id AS "playerId", p.name AS "playerName",
+              t.name AS "teamName", ms.match_id AS "matchId",
+              st.code AS "type", ms.notes AS "reason",
+              m.scheduled_at AS "matchDate",
+              (SELECT COUNT(*) FROM match_sanctions ms2
+               WHERE ms2.player_id = ms.player_id
+               AND ms2.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1))
+               AND ms2.sanction_type_id IN (SELECT id FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1)
+              )::int AS "accumulatedYellows",
+              CASE
+                WHEN st.code = 'RED' THEN true
+                WHEN (SELECT COUNT(*) FROM match_sanctions ms3
+                      WHERE ms3.player_id = ms.player_id
+                      AND ms3.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1))
+                      AND ms3.sanction_type_id IN (SELECT id FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1)
+                     ) >= COALESCE((SELECT accumulation_limit FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1), 999)
+                THEN true
+                ELSE false
+              END AS "isSuspended"
+       FROM match_sanctions ms
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       LEFT JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = ms.team_id
+       JOIN matches m ON m.id = ms.match_id
+       JOIN phases ph ON ph.id = m.phase_id
+       WHERE ph.tournament_id = $1
+       ORDER BY ms.created_at DESC`,
+      [tournamentId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Returns top scorers for a tournament aggregated from match_scorers table.
+   */
+  async findTournamentScorers(tournamentId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT
+         ms.player_id AS "playerId",
+         p.name AS "playerName",
+         t.name AS "teamName",
+         t.short_name AS "teamShort",
+         COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END)::int AS "goals",
+         COUNT(CASE WHEN ms.event_type = 'assist' THEN 1 END)::int AS "assists",
+         COUNT(DISTINCT ms.match_id)::int AS "matchesPlayed",
+         ROUND(COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END)::numeric /
+               NULLIF(COUNT(DISTINCT ms.match_id), 0), 2)::float AS "goalsPerMatch"
+       FROM match_scorers ms
+       JOIN players p ON p.id = ms.player_id
+       JOIN teams t ON t.id = p.team_id
+       JOIN matches m ON m.id = ms.match_id
+       JOIN phases ph ON ph.id = m.phase_id
+       WHERE ph.tournament_id = $1
+       GROUP BY ms.player_id, p.name, t.name, t.short_name
+       HAVING COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END) > 0
+       ORDER BY "goals" DESC, "assists" DESC
+       LIMIT 50`,
+      [tournamentId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Returns all match assignments for a specific referee user.
+   */
+  async findRefereeAssignments(refereeId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT mr.id, mr.match_id AS "matchId", mr.user_id AS "refereeId",
+              u.name AS "refereeName", mr.referee_role AS "role",
+              m.scheduled_at AS "matchDate", m.status,
+              ht.name AS "homeTeam", at.name AS "awayTeam",
+              trn.name AS "tournamentName"
+       FROM match_referees mr
+       JOIN users u ON u.id = mr.user_id
+       JOIN matches m ON m.id = mr.match_id
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
+       JOIN phases ph ON ph.id = m.phase_id
+       JOIN tournaments trn ON trn.id = ph.tournament_id
+       WHERE mr.user_id = $1
+       ORDER BY m.scheduled_at DESC NULLS LAST`,
+      [refereeId],
+    );
+    return result.rows;
+  }
 }
