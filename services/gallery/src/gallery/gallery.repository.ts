@@ -29,7 +29,10 @@ export class GalleryRepository {
       idx++;
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    // Only show top-level entries (albums), not child photos
+    conditions.push('parent_id IS NULL');
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
     const result = await this.pool.query<GalleryPhotoRow>(
       `SELECT * FROM gallery_photos ${where} ORDER BY created_at DESC`,
       values,
@@ -47,15 +50,18 @@ export class GalleryRepository {
   }
 
   async create(input: CreateGalleryPhotoInput): Promise<GalleryPhoto> {
-    // For album-style creation (title + coverUrl), use coverUrl as url and title as caption
     const url = input.url || input.coverUrl || 'https://img.icons8.com/3d-fluency/256/photo-gallery.png';
-    const caption = input.caption || input.title || null;
+    const caption = input.caption || null;
 
     const result = await this.pool.query<GalleryPhotoRow>(
-      `INSERT INTO gallery_photos (tournament_id, match_id, team_id, uploaded_by, url, thumbnail_url, caption)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO gallery_photos (tournament_id, match_id, team_id, uploaded_by, url, thumbnail_url, caption, title, description, cover_url)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
-      [input.tournamentId, input.matchId, input.teamId, input.uploadedBy, url, input.thumbnailUrl, caption],
+      [
+        input.tournamentId, input.matchId, input.teamId, input.uploadedBy,
+        url, input.thumbnailUrl, caption,
+        input.title || null, input.description || null, input.coverUrl || null,
+      ],
     );
     return mapGalleryPhotoRow(result.rows[0]);
   }

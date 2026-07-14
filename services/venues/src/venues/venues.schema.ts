@@ -38,6 +38,8 @@ export const venueIdSchema = z.object({
 export const venueQuerySchema = z.object({
   tournamentId: z.string().uuid().optional(),
   search:       z.string().max(100).optional(),
+  page:         z.coerce.number().int().min(1).optional(),
+  pageSize:     z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type CreateVenueDto = z.infer<typeof createVenueSchema>;

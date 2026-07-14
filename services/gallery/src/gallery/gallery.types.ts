@@ -8,6 +8,10 @@ export interface GalleryPhotoRow {
   url:           string;
   thumbnail_url: string | null;
   caption:       string | null;
+  title:         string | null;
+  description:   string | null;
+  cover_url:     string | null;
+  parent_id:     string | null;
   created_at:    Date;
 }
 
@@ -21,6 +25,9 @@ export interface GalleryPhoto {
   url:          string;
   thumbnailUrl: string | null;
   caption:      string | null;
+  title:        string | null;
+  description:  string | null;
+  coverUrl:     string | null;
   createdAt:    string;
 }
 
@@ -35,6 +42,9 @@ export function mapGalleryPhotoRow(row: GalleryPhotoRow): GalleryPhoto {
     url:          row.url,
     thumbnailUrl: row.thumbnail_url,
     caption:      row.caption,
+    title:        row.title,
+    description:  row.description,
+    coverUrl:     row.cover_url,
     createdAt:    row.created_at.toISOString(),
   };
 }

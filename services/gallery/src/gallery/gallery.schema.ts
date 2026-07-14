@@ -35,6 +35,8 @@ export const galleryQuerySchema = z.object({
   tournamentId: z.string().uuid().optional(),
   matchId:      z.string().uuid().optional(),
   teamId:       z.string().uuid().optional(),
+  page:         z.coerce.number().int().min(1).optional(),
+  pageSize:     z.coerce.number().int().min(1).max(100).optional(),
 });
 
 export type CreateGalleryPhotoDto = z.infer<typeof createGalleryPhotoSchema>;

@@ -337,6 +337,19 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  // DELETE /matches/:id/sanctions/:sanctionId — delete/correct a sanction
+  router.delete('/:id/sanctions/:sanctionId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const sanctionId = req.params['sanctionId'] as string;
+      await service.deleteSanction(id, sanctionId);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
+      next(err);
+    }
+  });
+
   // ── Match Events ──────────────────────────────────────────────────────────
 
   router.post('/:id/events', async (req: Request, res: Response, next: NextFunction) => {

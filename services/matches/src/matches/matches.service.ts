@@ -132,6 +132,10 @@ export class MatchesService {
     return this.repo.getSanctionsByPlayer(matchId, teamId);
   }
 
+  async deleteSanction(matchId: string, sanctionId: string): Promise<void> {
+    return this.repo.deleteSanction(matchId, sanctionId);
+  }
+
   // ── Match Events ──────────────────────────────────────────────────────────
 
   async addEvent(matchId: string, dto: CreateMatchEventDto): Promise<MatchEvent> {

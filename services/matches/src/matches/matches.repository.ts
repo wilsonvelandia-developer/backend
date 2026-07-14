@@ -629,7 +629,6 @@ export class MatchesRepository {
   async addSubstitution(matchId: string, dto: SubstitutionDto): Promise<Substitution> {
     const rules = await this.loadSportRules(matchId);
     const tournamentRules = await this.loadTournamentSubRules(matchId);
-    const engine = new SportRulesEngine(rules);
 
     // Verify match is in_progress
     const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
@@ -718,9 +717,9 @@ export class MatchesRepository {
     }
 
     // For volleyball: update the rotation slot if the sport has rotation
-    if (rules.hasRotation) {
-      await this.applyVolleyballSubstitution(matchId, dto, engine);
-    }
+    // Note: rotation is managed by the frontend RotationService.
+    // We only validate that both players belong to the team (already done above).
+    // Skip volleyball_rotations validation entirely — it's not synchronized with the live match state.
 
     const result = await this.pool.query<SubstitutionRow>(
       `INSERT INTO substitutions (match_id, team_id, period_number, player_out_id, player_in_id, minute)
@@ -752,83 +751,6 @@ export class MatchesRepository {
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────
-
-  /**
-   * For volleyball: replaces the outgoing player in the rotation with the incoming player.
-   * The incoming player takes the exact rotation slot of the outgoing player.
-   * Validates that the outgoing player is currently on court.
-   * Falls back to match_lineups if volleyball_rotations has no data for this set.
-   */
-  private async applyVolleyballSubstitution(
-    matchId: string,
-    dto: SubstitutionDto,
-    _engine: SportRulesEngine,
-  ): Promise<void> {
-    // First try volleyball_rotations table
-    const outgoingSlot = await this.pool.query<RotationRow>(
-      `SELECT * FROM volleyball_rotations
-       WHERE match_id = $1 AND team_id = $2 AND set_number = $3 AND player_id = $4`,
-      [matchId, dto.teamId, dto.periodNumber, dto.playerOutId],
-    );
-
-    if (outgoingSlot.rowCount === 0) {
-      // Fallback: check if rotations exist at all for this set
-      const anyRotation = await this.pool.query(
-        `SELECT 1 FROM volleyball_rotations WHERE match_id = $1 AND team_id = $2 AND set_number = $3 LIMIT 1`,
-        [matchId, dto.teamId, dto.periodNumber],
-      );
-
-      if ((anyRotation.rowCount ?? 0) === 0) {
-        // No rotations registered for this set — check match_lineups instead
-        const lineupCheck = await this.pool.query(
-          `SELECT 1 FROM match_lineups
-           WHERE match_id = $1 AND team_id = $2 AND player_id = $3 AND is_starter = true`,
-          [matchId, dto.teamId, dto.playerOutId],
-        );
-
-        if (lineupCheck.rowCount === 0) {
-          // Also check if player is in the team's player list (least strict)
-          const playerCheck = await this.pool.query(
-            `SELECT 1 FROM players WHERE id = $1 AND team_id = $2`,
-            [dto.playerOutId, dto.teamId],
-          );
-          if (playerCheck.rowCount === 0) {
-            throw new BusinessRuleError(
-              'El jugador que sale no pertenece al equipo',
-              { playerOutId: dto.playerOutId },
-            );
-          }
-        }
-        // No rotation data — skip rotation slot update (managed by frontend)
-        return;
-      }
-
-      // Rotations exist but player not found — actual error
-      throw new BusinessRuleError(
-        'El jugador que sale no está en la rotación actual de este set',
-        { playerOutId: dto.playerOutId, setNumber: dto.periodNumber },
-      );
-    }
-
-    // Check incoming player is not already on court
-    const incomingOnCourt = await this.pool.query(
-      `SELECT 1 FROM volleyball_rotations
-       WHERE match_id = $1 AND team_id = $2 AND set_number = $3 AND player_id = $4`,
-      [matchId, dto.teamId, dto.periodNumber, dto.playerInId],
-    );
-    if ((incomingOnCourt.rowCount ?? 0) > 0) {
-      throw new BusinessRuleError(
-        'El jugador que ingresa ya está en cancha',
-        { playerInId: dto.playerInId },
-      );
-    }
-
-    // Replace outgoing player with incoming player in the rotation slot
-    await this.pool.query(
-      `UPDATE volleyball_rotations SET player_id = $1 WHERE id = $2`,
-      [dto.playerInId, outgoingSlot.rows[0].id],
-    );
-  }
 
   async delete(id: string): Promise<void> {
     const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [id]);
@@ -1001,6 +923,19 @@ export class MatchesRepository {
     }
 
     return Array.from(grouped.values());
+  }
+
+  // ── Delete Sanction ────────────────────────────────────────────────────────
+
+  /**
+   * Deletes a sanction by ID. Used for corrections.
+   */
+  async deleteSanction(matchId: string, sanctionId: string): Promise<void> {
+    const result = await this.pool.query(
+      `DELETE FROM match_sanctions WHERE id = $1 AND match_id = $2`,
+      [sanctionId, matchId],
+    );
+    if (result.rowCount === 0) throw new NotFoundError('Sanction', sanctionId);
   }
 
   // ── Match Events ──────────────────────────────────────────────────────────
