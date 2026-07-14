@@ -14,13 +14,13 @@ const tournamentBaseSchema = z.object({
   name:    z.string().trim().min(2).max(200),
   season:  optionalStr(20),
 
-  maxSubsOverride: z.number().int().min(0).max(50).nullable().default(null),
+  maxSubsOverride: z.coerce.number().int().min(0).max(50).nullable().default(null),
 
   // Scheduling & registration
   startDate:            optionalStr(10), // ISO date YYYY-MM-DD
   registrationDeadline: optionalStr(10),
-  expectedTeams:        z.number().int().min(2).max(512).nullable().default(null),
-  numGroups:            z.number().int().min(1).max(64).nullable().default(null),
+  expectedTeams:        z.coerce.number().int().min(2).max(512).nullable().default(null),
+  numGroups:            z.coerce.number().int().min(1).max(64).nullable().default(null),
 
   // Category & age restrictions
   category:          optionalStr(100),
@@ -48,17 +48,23 @@ const tournamentBaseSchema = z.object({
   youtubeUrl:   optionalUrl(),
 
   // Fixture configuration
-  matchDurationMinutes: z.number().int().min(30).max(300).default(90),
-  matchesPerDay:        z.number().int().min(1).max(20).default(6),
+  matchDurationMinutes: z.coerce.number().int().min(1).max(600).default(90),
+  matchesPerDay:        z.coerce.number().int().min(1).max(50).default(6),
   firstMatchTime:       z.string().max(8).default('08:00'),
-  numVenues:            z.number().int().min(1).max(10).default(1),
+  numVenues:            z.coerce.number().int().min(1).max(50).default(1),
   venueName:            optionalStr(200),
 
   // Standings configuration
-  pointsConfig:         z.object({ win: z.number().int().min(0), draw: z.number().int().min(0), loss: z.number().int().min(0) }).default({ win: 3, draw: 1, loss: 0 }),
-  tiebreakerCriteria:   z.array(z.string().max(50)).default(['points', 'goal_difference', 'goals_for', 'head_to_head', 'fair_play', 'draw']),
-  initialFairPlayScore: z.number().int().default(1000),
-  teamsPerGroupQualify: z.number().int().min(1).max(10).default(2),
+  pointsConfig:         z.union([
+    z.object({ win: z.number().int().min(0), draw: z.number().int().min(0), loss: z.number().int().min(0) }),
+    z.string().transform((v) => { try { return JSON.parse(v); } catch { return { win: 3, draw: 1, loss: 0 }; } }),
+  ]).default({ win: 3, draw: 1, loss: 0 }),
+  tiebreakerCriteria:   z.union([
+    z.array(z.string().max(50)),
+    z.string().transform((v) => { try { return JSON.parse(v); } catch { return ['points', 'goal_difference', 'goals_for']; } }),
+  ]).default(['points', 'goal_difference', 'goals_for', 'head_to_head', 'fair_play', 'draw']),
+  initialFairPlayScore: z.coerce.number().int().default(1000),
+  teamsPerGroupQualify: z.coerce.number().int().min(1).max(10).default(2),
 });
 
 export const createTournamentSchema = tournamentBaseSchema;

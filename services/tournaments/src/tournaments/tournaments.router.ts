@@ -468,5 +468,62 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     } catch (err) { next(err); }
   });
 
+  // ── Observations (Veedor / Observer) ──────────────────────────────────────
+
+  // GET /tournaments/:id/observations — list observations for a tournament
+  router.get('/:id/observations', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userRoles = JSON.parse((req.headers['x-user-roles'] as string) || '[]') as string[];
+      const userId = req.headers['x-user-id'] as string;
+
+      // Admin and organizer see all; observer sees only their own
+      let observations;
+      if (userRoles.includes('admin') || userRoles.includes('organizer')) {
+        observations = await service.getObservations(id);
+      } else {
+        observations = await service.getObservations(id, userId);
+      }
+      res.json({ data: observations });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid tournament id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/observations — submit an observation (observer only)
+  router.post('/:id/observations', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const userId = req.headers['x-user-id'] as string;
+      const userRoles = JSON.parse((req.headers['x-user-roles'] as string) || '[]') as string[];
+
+      if (!userId) {
+        return next(new ValidationError('User ID required'));
+      }
+
+      // Only observers, organizers, and admins can submit observations
+      if (!userRoles.includes('observer') && !userRoles.includes('organizer') && !userRoles.includes('admin')) {
+        return next(new ValidationError('Solo veedores pueden enviar observaciones'));
+      }
+
+      const { subject, body: obsBody, matchId } = req.body as {
+        subject: string;
+        body: string;
+        matchId?: string;
+      };
+
+      if (!subject || !obsBody) {
+        return next(new ValidationError('subject y body son requeridos'));
+      }
+
+      const observation = await service.createObservation(id, userId, subject, obsBody, matchId);
+      res.status(201).json({ data: observation });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid tournament id', parseZodError(err)));
+      next(err);
+    }
+  });
+
   return router;
 }

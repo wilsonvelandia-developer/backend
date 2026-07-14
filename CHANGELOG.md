@@ -4,6 +4,33 @@
 
 ### Agregado
 
+#### Feature 1: Log de eventos enriquecido con marcador parcial y notificaciones
+- Se agregó columna `partial_score` (jsonb) a la tabla `match_events` — almacena marcador al momento del evento
+- Se enriqueció `getEvents` con `player_jersey` del jugador involucrado
+- Se creó `NotificationsHelper` para enviar notificaciones a usuarios del torneo en cada evento relevante
+- Eventos de sustitución ahora incluyen nombres y números de camiseta de jugadores entrante/saliente en el payload
+- Frontend: se muestra marcador parcial junto a cada evento en el timeline
+
+#### Feature 2: Auto-actualización de clasificación al finalizar partido
+- Se agregó método `recalculateStandings(phaseId)` al repositorio de matches
+- Al finalizar un partido (`finishMatch`), la clasificación de la fase se recalcula automáticamente
+- Se envía notificación de resultado final a los usuarios del torneo
+- Al actualizar marcador (`updatePeriodScore`), si un equipo gana los sets necesarios se finaliza el partido automáticamente
+
+#### Feature 3: Resultados de voleibol por set en listado de partidos
+- Se agregaron campos `homeSetsWon`, `awaySetsWon` y `periods[]` al endpoint `GET /matches`
+- Frontend: partidos de voleibol muestran sets ganados como marcador principal (ej. 3-2) y detalle por set debajo
+
+#### Feature 4: Sedes many-to-many con torneos
+- Se creó tabla `tournament_venues` (join table) con constraint unique y índices
+- Se agregaron endpoints: `GET /venues/by-tournament/:id`, `POST /venues/link`, `POST /venues/unlink`
+- Frontend: se permite vincular/desvincular sedes desde la pestaña de sedes del torneo
+- Se mantiene compatibilidad con el campo `tournament_id` directo (legacy)
+
+### Cambiado
+- Se actualizó constraint `chk_match_events_type` para incluir `set_end`
+- Se actualizó `MatchEventItem` en frontend para incluir `partialScore` y `playerJersey`
+
 #### Chat en tiempo real (WebSocket + persistencia)
 - Se creó migración 030: tablas `chat_rooms`, `chat_room_members`, `chat_messages` con FK, índices compuestos y constraint de tipo
 - Se implementó `chat-handlers.ts` en el gateway WebSocket con eventos: `chat:join`, `chat:openRoom`, `chat:sendMessage`, `chat:createRoom`

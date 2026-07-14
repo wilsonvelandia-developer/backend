@@ -976,4 +976,51 @@ export class TournamentsRepository {
       [enrollmentId, tournamentId],
     );
   }
+
+  // ── Observations (Veedor / Observer) ──────────────────────────────────────
+
+  /**
+   * Returns observations for a tournament.
+   * If userId is provided, only returns observations from that user.
+   */
+  async getObservations(tournamentId: string, userId?: string): Promise<unknown[]> {
+    const conditions = ['o.tournament_id = $1'];
+    const values: unknown[] = [tournamentId];
+
+    if (userId) {
+      conditions.push('o.user_id = $2');
+      values.push(userId);
+    }
+
+    const result = await this.pool.query(
+      `SELECT o.id, o.subject, o.body, o.status, o.match_id AS "matchId",
+              o.created_at AS "createdAt",
+              u.name AS "observerName"
+       FROM observations o
+       JOIN users u ON u.id = o.user_id
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY o.created_at DESC`,
+      values,
+    );
+    return result.rows;
+  }
+
+  /**
+   * Creates an observation for a tournament.
+   */
+  async createObservation(
+    tournamentId: string,
+    userId: string,
+    subject: string,
+    body: string,
+    matchId?: string,
+  ): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO observations (tournament_id, user_id, subject, body, match_id)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, subject, body, status, match_id AS "matchId", created_at AS "createdAt"`,
+      [tournamentId, userId, subject, body, matchId ?? null],
+    );
+    return result.rows[0];
+  }
 }

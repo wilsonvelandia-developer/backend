@@ -92,4 +92,43 @@ export class VenuesRepository {
     const result = await this.pool.query(`DELETE FROM venues WHERE id = $1`, [id]);
     if (result.rowCount === 0) throw new NotFoundError('Venue', id);
   }
+
+  // ── Tournament-Venue many-to-many ─────────────────────────────────────────
+
+  /**
+   * Returns all venues linked to a tournament via the join table,
+   * plus any venues with tournament_id directly (legacy).
+   */
+  async findByTournament(tournamentId: string): Promise<Venue[]> {
+    const result = await this.pool.query<VenueRow>(
+      `SELECT DISTINCT v.* FROM venues v
+       LEFT JOIN tournament_venues tv ON tv.venue_id = v.id
+       WHERE tv.tournament_id = $1 OR v.tournament_id = $1
+       ORDER BY v.name ASC`,
+      [tournamentId],
+    );
+    return result.rows.map(mapVenueRow);
+  }
+
+  /**
+   * Links a venue to a tournament (many-to-many).
+   */
+  async linkToTournament(tournamentId: string, venueId: string): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO tournament_venues (tournament_id, venue_id)
+       VALUES ($1, $2)
+       ON CONFLICT (tournament_id, venue_id) DO NOTHING`,
+      [tournamentId, venueId],
+    );
+  }
+
+  /**
+   * Unlinks a venue from a tournament.
+   */
+  async unlinkFromTournament(tournamentId: string, venueId: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM tournament_venues WHERE tournament_id = $1 AND venue_id = $2`,
+      [tournamentId, venueId],
+    );
+  }
 }

@@ -33,6 +33,17 @@ export function buildVenuesRouter(service: VenuesService): Router {
     }
   });
 
+  // GET /venues/by-tournament/:tournamentId — venues linked to a tournament (many-to-many)
+  router.get('/by-tournament/:tournamentId', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tournamentId = req.params['tournamentId'] as string;
+      const venues = await service.getByTournament(tournamentId);
+      res.json({ data: venues });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // GET /venues/:id
   router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -78,6 +89,36 @@ export function buildVenuesRouter(service: VenuesService): Router {
       res.status(204).send();
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // ── Tournament-Venue associations (many-to-many) ──────────────────────────
+
+  // POST /venues/link — link a venue to a tournament
+  router.post('/link', requireRole('admin', 'organizer'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { tournamentId, venueId } = req.body as { tournamentId: string; venueId: string };
+      if (!tournamentId || !venueId) {
+        return next(new ValidationError('tournamentId and venueId are required'));
+      }
+      await service.linkToTournament(tournamentId, venueId);
+      res.status(201).json({ data: { tournamentId, venueId }, success: true });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /venues/unlink — unlink a venue from a tournament
+  router.post('/unlink', requireRole('admin', 'organizer'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { tournamentId, venueId } = req.body as { tournamentId: string; venueId: string };
+      if (!tournamentId || !venueId) {
+        return next(new ValidationError('tournamentId and venueId are required'));
+      }
+      await service.unlinkFromTournament(tournamentId, venueId);
+      res.status(204).send();
+    } catch (err) {
       next(err);
     }
   });

@@ -1,5 +1,6 @@
 import { Match, Substitution, VolleyballRotationSlot } from '@tournament/shared';
 import { MatchesRepository } from './matches.repository.js';
+import { NotificationsHelper } from './notifications.helper.js';
 import {
   CreateMatchDto, UpdatePeriodScoreDto,
   RegisterLineupDto, RotateTeamDto,
@@ -14,7 +15,14 @@ import { MatchDetail, MatchSanction, MatchEvent, MatchScorer, MatchLineupPlayer,
  * sanctions, events, and scorers.
  */
 export class MatchesService {
-  constructor(private readonly repo: MatchesRepository) {}
+  private readonly notifications: NotificationsHelper | null;
+
+  constructor(
+    private readonly repo: MatchesRepository,
+    notifications?: NotificationsHelper,
+  ) {
+    this.notifications = notifications ?? null;
+  }
 
   async getAll(filters: ListMatchesQuery): Promise<Match[]> {
     return this.repo.findAll(filters);
@@ -39,7 +47,26 @@ export class MatchesService {
   }
 
   async finishMatch(id: string): Promise<MatchDetail> {
-    return this.repo.finishMatch(id);
+    const detail = await this.repo.finishMatch(id);
+
+    // Auto-recalculate standings for the phase when match ends
+    if (detail.match.phaseId) {
+      this.repo.recalculateStandings(detail.match.phaseId).catch(() => { /* non-critical */ });
+    }
+
+    // Send notification about match result
+    if (this.notifications) {
+      const home = detail.match.homeTeamName ?? 'Local';
+      const away = detail.match.awayTeamName ?? 'Visitante';
+      const score = `${detail.match.homeScore ?? 0} - ${detail.match.awayScore ?? 0}`;
+      this.notifications.notifyMatchEvent(
+        id,
+        'Resultado final',
+        `${home} ${score} ${away}`,
+      ).catch(() => { /* non-critical */ });
+    }
+
+    return detail;
   }
 
   // ── Scoring ───────────────────────────────────────────────────────────────
@@ -49,7 +76,22 @@ export class MatchesService {
     periodNumber: number,
     dto: UpdatePeriodScoreDto,
   ): Promise<MatchDetail> {
-    return this.repo.updatePeriodScore(matchId, periodNumber, dto);
+    const detail = await this.repo.updatePeriodScore(matchId, periodNumber, dto);
+
+    // Check if the match should be auto-finished (team won required sets)
+    const finishedPeriods = detail.periods.filter((p) => p.status === 'finished');
+    if (finishedPeriods.length > 0) {
+      const homeSets = finishedPeriods.filter((p) => p.homeScore > p.awayScore).length;
+      const awaySets = finishedPeriods.filter((p) => p.awayScore > p.homeScore).length;
+      const rules = await this.repo.loadSportRules(matchId);
+
+      // Auto-finish match if a team won enough sets
+      if (rules.hasSets && rules.setsToWin !== null && (homeSets >= rules.setsToWin || awaySets >= rules.setsToWin)) {
+        return this.finishMatch(matchId);
+      }
+    }
+
+    return detail;
   }
 
   // ── Volleyball ────────────────────────────────────────────────────────────
@@ -185,5 +227,10 @@ export class MatchesService {
   /** Get all match assignments for a specific referee. */
   async getRefereeAssignments(refereeId: string): Promise<unknown[]> {
     return this.repo.findRefereeAssignments(refereeId);
+  }
+
+  /** Get sanction types configured for the tournament that owns this match. */
+  async getSanctionTypesForMatch(matchId: string): Promise<unknown[]> {
+    return this.repo.findSanctionTypesForMatch(matchId);
   }
 }

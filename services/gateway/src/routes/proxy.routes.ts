@@ -6,6 +6,7 @@ import {
   authorizeTournamentWrite,
   authorizeTeamWrite,
   authorizeMatchWrite,
+  injectOwnershipContext,
 } from '../middleware/authorization.middleware.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
@@ -178,6 +179,7 @@ router.use(
   authMiddleware,
   blockReadOnlyWrites,
   authorizeTeamWrite,
+  injectOwnershipContext,
   (req: Request, res: Response, next: NextFunction) =>
     buildProxy(config.services.teams, 'teams')(req, res, next),
 );

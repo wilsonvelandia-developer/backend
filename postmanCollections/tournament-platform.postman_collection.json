@@ -1,198 +1,1475 @@
 {
   "info": {
     "name": "Tournament Platform API — Full CRUD",
-    "description": "Colección completa con todos los CRUD disponibles",
+    "description": "Colección completa con todos los CRUD de Sports, Tournaments, Teams, Players, Matches, Volleyball, Standings, Venues, Announcements, Payments, Gallery, Sanctions, Events, Scorers, Notifications y Auth.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "base_url", "value": "http://localhost:3000" },
-    { "key": "admin_email", "value": "admin@olimpic.app" },
-    { "key": "admin_pass", "value": "admin123" },
-    { "key": "test_pass", "value": "test123" },
-    { "key": "tournament_id", "value": "a1b2c3d4-0001-0000-0000-000000000000" },
-    { "key": "phase_id", "value": "a1b2c3d4-0002-0000-0000-000000000000" },
-    { "key": "team_id", "value": "b0000001-0000-0000-0000-000000000001" },
-    { "key": "sport_id", "value": "edb13f17-6eca-4153-bce1-62f42620a077" },
-    { "key": "match_id", "value": "c0000001-0001-0000-0000-000000000001" },
-    { "key": "player_id", "value": "" },
-    { "key": "user_id", "value": "" }
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "admin_email",
+      "value": "admin@olimpic.app"
+    },
+    {
+      "key": "admin_pass",
+      "value": "admin123"
+    },
+    {
+      "key": "test_pass",
+      "value": "test123"
+    },
+    {
+      "key": "tournament_id",
+      "value": "a1b2c3d4-0001-0000-0000-000000000000"
+    },
+    {
+      "key": "phase_id",
+      "value": "a1b2c3d4-0002-0000-0000-000000000000"
+    },
+    {
+      "key": "team_id",
+      "value": "b0000001-0001-0000-0000-000000000001"
+    },
+    {
+      "key": "away_team_id",
+      "value": "b0000001-0009-0000-0000-000000000000"
+    },
+    {
+      "key": "sport_id",
+      "value": "edb13f17-6eca-4153-bce1-62f42620a077"
+    },
+    {
+      "key": "match_id",
+      "value": ""
+    },
+    {
+      "key": "player_id",
+      "value": ""
+    },
+    {
+      "key": "venue_id",
+      "value": ""
+    },
+    {
+      "key": "announcement_id",
+      "value": ""
+    },
+    {
+      "key": "payment_id",
+      "value": ""
+    },
+    {
+      "key": "gallery_id",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": "00000000-0000-0000-0000-000000000001"
+    },
+    {
+      "key": "token",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          ""
+        ]
+      }
+    }
   ],
   "item": [
     {
-      "name": "1. Auth",
+      "name": "01. Auth",
       "item": [
-        { "name": "Login Admin", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"{{admin_email}}\",\"password\":\"{{admin_pass}}\"}"} } },
-        { "name": "Login Organizador", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"organizador@test.com\",\"password\":\"{{test_pass}}\"}"} } },
-        { "name": "Login Entrenador", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"entrenador@test.com\",\"password\":\"{{test_pass}}\"}"} } },
-        { "name": "Login Jugador", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"jugador@test.com\",\"password\":\"{{test_pass}}\"}"} } },
-        { "name": "Login Arbitro", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"arbitro@test.com\",\"password\":\"{{test_pass}}\"}"} } },
-        { "name": "Login Veedor", "request": { "method": "POST", "url": "{{base_url}}/auth/login",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"veedor@test.com\",\"password\":\"{{test_pass}}\"}"} } },
-        { "name": "GET /auth/me", "request": { "method": "GET", "url": "{{base_url}}/auth/me" } },
-        { "name": "POST /auth/logout", "request": { "method": "POST", "url": "{{base_url}}/auth/logout" } },
-        { "name": "POST /auth/register — Crear usuario", "request": { "method": "POST", "url": "{{base_url}}/auth/register",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"email\":\"nuevo@ejemplo.com\",\"password\":\"test123\",\"name\":\"Usuario Nuevo\",\"documentNumber\":\"9999999\",\"phone\":\"+57 300 999 9999\",\"roles\":[\"coach\",\"player\"]}"} } }
+        {
+          "name": "Login Admin",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "description": "Login como administrador. Guarda token.",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{admin_email}}\",\n  \"password\": \"{{admin_pass}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Organizador",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"organizador@test.com\",\n  \"password\": \"{{test_pass}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Árbitro",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"arbitro@test.com\",\n  \"password\": \"{{test_pass}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Jugador",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/login",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jugador@test.com\",\n  \"password\": \"{{test_pass}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Register — Crear usuario",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/register",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nuevo@ejemplo.com\",\n  \"password\": \"test123\",\n  \"name\": \"Usuario Nuevo\",\n  \"roles\": [\n    \"viewer\"\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /auth/me — Perfil actual",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/auth/me",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/logout",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /auth/refresh",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/auth/refresh",
+            "description": ""
+          }
+        }
       ]
     },
     {
-      "name": "2. Users (CRUD)",
+      "name": "02. Sports (CRUD)",
       "item": [
-        { "name": "GET /api/users — Listar todos", "request": { "method": "GET", "url": "{{base_url}}/api/users" } }
-      ]
-    }
-    ,
-    {
-      "name": "3. Sports (CRUD)",
-      "item": [
-        { "name": "GET /api/sports — Listar", "request": { "method": "GET", "url": "{{base_url}}/api/sports" } },
-        { "name": "GET /api/sports/:id — Detalle", "request": { "method": "GET", "url": "{{base_url}}/api/sports/{{sport_id}}" } },
-        { "name": "POST /api/sports — Crear", "request": { "method": "POST", "url": "{{base_url}}/api/sports",
-          "header": [{"key":"Content-Type","value":"application/json"},{"key":"x-user-role","value":"admin"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"Futsal\",\"slug\":\"futsal\",\"playersPerTeam\":5,\"hasSets\":false,\"winMargin\":2,\"periodsPerMatch\":2,\"maxSubstitutions\":null,\"hasRotation\":false,\"iconUrl\":\"https://img.icons8.com/color/96/football2.png\"}"} } },
-        { "name": "PUT /api/sports/:id — Editar", "request": { "method": "PUT", "url": "{{base_url}}/api/sports/{{sport_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"},{"key":"x-user-role","value":"admin"}],
-          "body": {"mode":"raw","raw":"{\"maxSubstitutions\":7,\"iconUrl\":\"https://img.icons8.com/color/96/volleyball.png\"}"} } },
-        { "name": "DELETE /api/sports/:id — Eliminar", "request": { "method": "DELETE", "url": "{{base_url}}/api/sports/{{sport_id}}",
-          "header": [{"key":"x-user-role","value":"admin"}] } }
-      ]
-    },
-    {
-      "name": "4. Tournaments (CRUD)",
-      "item": [
-        { "name": "GET /api/tournaments — Listar", "request": { "method": "GET", "url": "{{base_url}}/api/tournaments" } },
-        { "name": "GET /api/tournaments?status=active", "request": { "method": "GET", "url": "{{base_url}}/api/tournaments?status=active" } },
-        { "name": "GET /api/tournaments/:id — Detalle", "request": { "method": "GET", "url": "{{base_url}}/api/tournaments/{{tournament_id}}" } },
-        { "name": "POST /api/tournaments — Crear", "request": { "method": "POST", "url": "{{base_url}}/api/tournaments",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"sportId\":\"{{sport_id}}\",\"name\":\"Torneo Test Postman\",\"season\":\"2026\",\"category\":\"Sub-18\",\"expectedTeams\":8,\"numGroups\":2,\"startDate\":\"2026-09-01\",\"registrationDeadline\":\"2026-08-15\",\"contactPhone\":\"+57 300 111 2222\",\"entryFee\":\"$150.000 COP\",\"description\":\"Torneo de prueba\"}"} } },
-        { "name": "PUT /api/tournaments/:id — Editar", "request": { "method": "PUT", "url": "{{base_url}}/api/tournaments/{{tournament_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"status\":\"active\",\"contactPhone\":\"+57 300 555 1234\",\"address\":\"Calle 123 #45-67\",\"instagramUrl\":\"https://instagram.com/torneo_test\"}"} } },
-        { "name": "DELETE /api/tournaments/:id — Eliminar", "request": { "method": "DELETE", "url": "{{base_url}}/api/tournaments/{{tournament_id}}" } },
-        { "name": "GET /api/tournaments/:id/phases — Listar fases", "request": { "method": "GET", "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases" } },
-        { "name": "POST /api/tournaments/:id/phases — Crear fase", "request": { "method": "POST", "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"Semifinales\",\"format\":\"single_elim\",\"orderIndex\":3}"} } },
-        { "name": "PUT /api/tournaments/:id/phases/:phaseId — Editar fase", "request": { "method": "PUT", "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases/{{phase_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"status\":\"active\"}"} } },
-        { "name": "DELETE /api/tournaments/:id/phases/:phaseId — Eliminar fase", "request": { "method": "DELETE", "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases/{{phase_id}}" } }
-      ]
-    }
-    ,
-    {
-      "name": "5. Teams (CRUD)",
-      "item": [
-        { "name": "GET /api/teams — Listar todos", "request": { "method": "GET", "url": "{{base_url}}/api/teams" } },
-        { "name": "GET /api/teams?tournamentId — Por torneo", "request": { "method": "GET", "url": "{{base_url}}/api/teams?tournamentId={{tournament_id}}" } },
-        { "name": "GET /api/teams/:id — Detalle", "request": { "method": "GET", "url": "{{base_url}}/api/teams/{{team_id}}" } },
-        { "name": "POST /api/teams — Crear equipo", "request": { "method": "POST", "url": "{{base_url}}/api/teams",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"tournamentId\":\"{{tournament_id}}\",\"name\":\"Equipo Nuevo Postman\",\"shortName\":\"ENP\"}"} } },
-        { "name": "PUT /api/teams/:id — Editar equipo", "request": { "method": "PUT", "url": "{{base_url}}/api/teams/{{team_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"Equipo Renombrado\",\"shortName\":\"REN\"}"} } },
-        { "name": "DELETE /api/teams/:id — Eliminar equipo", "request": { "method": "DELETE", "url": "{{base_url}}/api/teams/{{team_id}}" } },
-        { "name": "GET /api/teams/:id/players — Listar jugadores", "request": { "method": "GET", "url": "{{base_url}}/api/teams/{{team_id}}/players" } },
-        { "name": "POST /api/teams/:id/players — Crear jugador", "request": { "method": "POST", "url": "{{base_url}}/api/teams/{{team_id}}/players",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"Jugador Nuevo\",\"jerseyNumber\":99,\"position\":\"libero\"}"} } },
-        { "name": "PUT /api/teams/:id/players/:playerId — Editar jugador", "request": { "method": "PUT", "url": "{{base_url}}/api/teams/{{team_id}}/players/{{player_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"Jugador Editado\",\"position\":\"setter\",\"isActive\":false}"} } },
-        { "name": "DELETE /api/teams/:id/players/:playerId — Eliminar jugador", "request": { "method": "DELETE", "url": "{{base_url}}/api/teams/{{team_id}}/players/{{player_id}}" } }
+        {
+          "name": "GET /sports — Listar deportes",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/sports",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /sports/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/sports/{{sport_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /sports — Crear deporte",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/sports",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fútbol Sala\",\n  \"slug\": \"futsal\",\n  \"hasSets\": false,\n  \"periodsPerMatch\": 2,\n  \"playersPerTeam\": 5,\n  \"maxSubstitutions\": 5\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /sports/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/sports/{{sport_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Voleibol\",\n  \"pointsPerSet\": 21\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /sports/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/sports/{{sport_id}}",
+            "description": ""
+          }
+        }
       ]
     },
     {
-      "name": "6. Matches (CRUD + Lifecycle)",
+      "name": "03. Tournaments (CRUD)",
       "item": [
-        { "name": "GET /api/matches — Listar", "request": { "method": "GET", "url": "{{base_url}}/api/matches" } },
-        { "name": "GET /api/matches?phaseId — Por fase", "request": { "method": "GET", "url": "{{base_url}}/api/matches?phaseId={{phase_id}}" } },
-        { "name": "GET /api/matches?status=scheduled", "request": { "method": "GET", "url": "{{base_url}}/api/matches?status=scheduled" } },
-        { "name": "GET /api/matches/:id — Detalle con periodos", "request": { "method": "GET", "url": "{{base_url}}/api/matches/{{match_id}}" } },
-        { "name": "POST /api/matches — Programar partido", "request": { "method": "POST", "url": "{{base_url}}/api/matches",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"phaseId\":\"{{phase_id}}\",\"homeTeamId\":\"b0000001-0000-0000-0000-000000000001\",\"awayTeamId\":\"b0000001-0000-0000-0000-000000000002\",\"scheduledAt\":\"2026-09-15T15:00:00Z\"}"} } },
-        { "name": "PUT /api/matches/:id/start — Iniciar partido", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/start" } },
-        { "name": "PUT /api/matches/:id/periods/1/score — Marcar Set 1", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/periods/1/score",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"homeScore\":25,\"awayScore\":20}"} } },
-        { "name": "PUT /api/matches/:id/periods/2/score — Marcar Set 2", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/periods/2/score",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"homeScore\":25,\"awayScore\":22}"} } },
-        { "name": "PUT /api/matches/:id/periods/3/score — Marcar Set 3", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/periods/3/score",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"homeScore\":25,\"awayScore\":18}"} } },
-        { "name": "PUT /api/matches/:id/finish — Finalizar partido", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/finish" } },
-        { "name": "DELETE /api/matches/:id — Eliminar (solo scheduled)", "request": { "method": "DELETE", "url": "{{base_url}}/api/matches/{{match_id}}" } }
-      ]
-    }
-    ,
-    {
-      "name": "7. Volleyball (Lineups + Rotations + Substitutions)",
-      "item": [
-        { "name": "POST /api/matches/:id/lineups — Registrar alineacion", "request": { "method": "POST", "url": "{{base_url}}/api/matches/{{match_id}}/lineups",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"teamId\":\"{{team_id}}\",\"setNumber\":1,\"lineup\":[{\"position\":1,\"playerId\":\"PLAYER1_UUID\"},{\"position\":2,\"playerId\":\"PLAYER2_UUID\"},{\"position\":3,\"playerId\":\"PLAYER3_UUID\"},{\"position\":4,\"playerId\":\"PLAYER4_UUID\"},{\"position\":5,\"playerId\":\"PLAYER5_UUID\"},{\"position\":6,\"playerId\":\"PLAYER6_UUID\"}]}"} } },
-        { "name": "GET /api/matches/:id/lineups/:teamId/:set — Ver rotacion", "request": { "method": "GET", "url": "{{base_url}}/api/matches/{{match_id}}/lineups/{{team_id}}/1" } },
-        { "name": "POST /api/matches/:id/rotate — Rotar equipo", "request": { "method": "POST", "url": "{{base_url}}/api/matches/{{match_id}}/rotate",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"teamId\":\"{{team_id}}\",\"setNumber\":1}"} } },
-        { "name": "POST /api/matches/:id/substitutions — Cambio", "request": { "method": "POST", "url": "{{base_url}}/api/matches/{{match_id}}/substitutions",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"teamId\":\"{{team_id}}\",\"periodNumber\":1,\"playerOutId\":\"PLAYER_OUT_UUID\",\"playerInId\":\"PLAYER_IN_UUID\"}"} } },
-        { "name": "GET /api/matches/:id/substitutions — Ver cambios", "request": { "method": "GET", "url": "{{base_url}}/api/matches/{{match_id}}/substitutions" } }
+        {
+          "name": "GET /tournaments — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/tournaments",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /tournaments/:id — Detalle",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments — Crear",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sportId\": \"{{sport_id}}\",\n  \"name\": \"Torneo Test\",\n  \"season\": \"2026-B\",\n  \"expectedTeams\": 16,\n  \"numGroups\": 2,\n  \"category\": \"Sub-14\",\n  \"startDate\": \"2026-08-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /tournaments/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Torneo Actualizado\",\n  \"status\": \"active\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /tournaments/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /tournaments/:id/phases — Fases",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/phases — Crear fase",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/phases",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Fase Test\",\n  \"format\": \"groups\",\n  \"orderIndex\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/draw — Sorteo grupos",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/draw",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/generate-fixtures",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/generate-fixtures",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/generate-knockout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/generate-knockout",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /tournaments/:id/staff",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/staff",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/staff — Agregar staff",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/staff",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"staffRole\": \"referee\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /tournaments/:id/sanction-types",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/sanction-types",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /tournaments/:id/sanction-types — Crear tipo sanción",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/tournaments/{{tournament_id}}/sanction-types",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Tarjeta Amarilla\",\n  \"code\": \"YELLOW\",\n  \"color\": \"#fbbf24\",\n  \"accumulationLimit\": 2\n}"
+            }
+          }
+        }
       ]
     },
     {
-      "name": "8. Standings",
+      "name": "04. Teams (CRUD)",
       "item": [
-        { "name": "GET /api/standings/:phaseId — Tabla posiciones", "request": { "method": "GET", "url": "{{base_url}}/api/standings/{{phase_id}}" } },
-        { "name": "POST /api/standings/recalculate — Recalcular", "request": { "method": "POST", "url": "{{base_url}}/api/standings/recalculate",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"phaseId\":\"{{phase_id}}\"}"} } }
+        {
+          "name": "GET /teams — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/teams?pageSize=50",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /teams?tournamentId — Por torneo",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/teams?tournamentId={{tournament_id}}&pageSize=50",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /teams/:id — Detalle",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/teams/{{team_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /teams — Crear",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/teams",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"name\": \"Equipo Test\",\n  \"shortName\": \"TST\",\n  \"colorPrimary\": \"#3b82f6\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /teams/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/teams/{{team_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Equipo Actualizado\",\n  \"colorPrimary\": \"#ef4444\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /teams/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/teams/{{team_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /teams/:id/players — Jugadores",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/teams/{{team_id}}/players",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /teams/:id/players — Crear jugador",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/teams/{{team_id}}/players",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jugador Test\",\n  \"jerseyNumber\": 99,\n  \"position\": \"Armador\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /teams/:id/players/:playerId — Actualizar jugador",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/teams/{{team_id}}/players/{{player_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Jugador Actualizado\",\n  \"jerseyNumber\": 7\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /teams/:id/players/:playerId",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/teams/{{team_id}}/players/{{player_id}}",
+            "description": ""
+          }
+        }
       ]
     },
     {
-      "name": "9. RBAC Tests (Permisos)",
-      "description": "Login con diferentes roles y probar restricciones",
+      "name": "05. Matches (CRUD + Lifecycle)",
       "item": [
-        { "name": "[Jugador] POST torneo → 403 Forbidden", "request": { "method": "POST", "url": "{{base_url}}/api/tournaments",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"sportId\":\"{{sport_id}}\",\"name\":\"No deberia crearse\"}"} } },
-        { "name": "[Jugador] POST equipo → 403 Forbidden", "request": { "method": "POST", "url": "{{base_url}}/api/teams",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"tournamentId\":\"{{tournament_id}}\",\"name\":\"No equipo\"}"} } },
-        { "name": "[Jugador] GET torneos → 200 OK (lectura)", "request": { "method": "GET", "url": "{{base_url}}/api/tournaments" } },
-        { "name": "[Veedor] PUT torneo → 403 Forbidden", "request": { "method": "PUT", "url": "{{base_url}}/api/tournaments/{{tournament_id}}",
-          "header": [{"key":"Content-Type","value":"application/json"}],
-          "body": {"mode":"raw","raw":"{\"name\":\"No deberia editarse\"}"} } },
-        { "name": "[Arbitro] PUT match/start → 200 OK", "request": { "method": "PUT", "url": "{{base_url}}/api/matches/{{match_id}}/start" } },
-        { "name": "[Organizador] GET users → 200 OK", "request": { "method": "GET", "url": "{{base_url}}/api/users" } },
-        { "name": "[Jugador] GET users → 403 Forbidden", "request": { "method": "GET", "url": "{{base_url}}/api/users" } }
+        {
+          "name": "GET /matches — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches?phaseId={{phase_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/:id — Detalle",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches — Programar",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phaseId\": \"{{phase_id}}\",\n  \"homeTeamId\": \"{{team_id}}\",\n  \"awayTeamId\": \"{{away_team_id}}\",\n  \"scheduledAt\": \"2026-07-18T14:00:00-05:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /matches/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/matches/{{match_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "PUT /matches/:id/start — Iniciar partido",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/matches/{{match_id}}/start",
+            "description": ""
+          }
+        },
+        {
+          "name": "PUT /matches/:id/periods/1/score — Actualizar marcador",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/matches/{{match_id}}/periods/1/score",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"homeScore\": 15,\n  \"awayScore\": 12\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /matches/:id/finish — Finalizar partido",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/matches/{{match_id}}/finish",
+            "description": ""
+          }
+        },
+        {
+          "name": "PATCH /matches/:id/schedule — Reprogramar",
+          "request": {
+            "method": "PATCH",
+            "url": "{{base_url}}/api/matches/{{match_id}}/schedule",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledAt\": \"2026-07-19T10:00:00-05:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/for-referee — Mis partidos (árbitro)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/for-referee",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/:id/sport-rules",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/sport-rules",
+            "description": ""
+          }
+        }
       ]
     },
     {
-      "name": "10. Health Checks",
+      "name": "06. Match Setup & Volleyball",
       "item": [
-        { "name": "Gateway /health", "request": { "method": "GET", "url": "{{base_url}}/health" } },
-        { "name": "Sports /health", "request": { "method": "GET", "url": "http://localhost:3001/health" } },
-        { "name": "Tournaments /health", "request": { "method": "GET", "url": "http://localhost:3002/health" } },
-        { "name": "Teams /health", "request": { "method": "GET", "url": "http://localhost:3003/health" } },
-        { "name": "Matches /health", "request": { "method": "GET", "url": "http://localhost:3004/health" } },
-        { "name": "Standings /health", "request": { "method": "GET", "url": "http://localhost:3005/health" } }
+        {
+          "name": "PUT /matches/:id/setup — Configurar sorteo",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/matches/{{match_id}}/setup",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"coinTossWinnerTeamId\": \"{{team_id}}\",\n  \"fieldSideHome\": \"A\",\n  \"fieldSideAway\": \"B\",\n  \"firstServeTeamId\": \"{{team_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/setup",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/setup",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches/:id/match-lineups — Guardar alineación",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/match-lineups",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"periodNumber\": 1,\n  \"players\": [\n    {\n      \"playerId\": \"{{player_id}}\",\n      \"isStarter\": true,\n      \"isCaptain\": true,\n      \"isGoalkeeper\": false,\n      \"isLibero\": false,\n      \"volleyballZone\": 1\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/match-lineups/:teamId — Obtener alineación",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/match-lineups/{{team_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches/:id/lineups — Registrar rotación",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/lineups",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"setNumber\": 1,\n  \"lineup\": [\n    {\n      \"position\": 1,\n      \"playerId\": \"{{player_id}}\"\n    }\n  ]\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/lineups/:teamId/:set",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/lineups/{{team_id}}/1",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches/:id/rotate — Rotar equipo",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/rotate",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"setNumber\": 1\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "07. Substitutions",
+      "item": [
+        {
+          "name": "POST /matches/:id/substitutions — Registrar cambio",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/substitutions",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"periodNumber\": 1,\n  \"playerOutId\": \"{{player_id}}\",\n  \"playerInId\": \"{{player_id}}\",\n  \"minute\": 5\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/substitutions — Listar cambios",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/substitutions",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "08. Sanctions",
+      "item": [
+        {
+          "name": "GET /matches/:id/sanctions/types — Tipos de sanción",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/sanctions/types",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches/:id/sanctions — Aplicar sanción",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/sanctions",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sanctionTypeId\": \"\",\n  \"teamId\": \"{{team_id}}\",\n  \"playerId\": \"{{player_id}}\",\n  \"periodNumber\": 1,\n  \"minute\": 10\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/sanctions — Listar sanciones del partido",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/sanctions",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/:id/sanctions/by-player/:teamId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/sanctions/by-player/{{team_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/sanctions?tournamentId — Sanciones del torneo",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/sanctions?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "09. Match Events (Timeline)",
+      "item": [
+        {
+          "name": "POST /matches/:id/events — Registrar evento",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/events",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"eventType\": \"score\",\n  \"teamId\": \"{{team_id}}\",\n  \"playerId\": \"{{player_id}}\",\n  \"periodNumber\": 1,\n  \"matchMinute\": 5,\n  \"payload\": {\n    \"points\": 1\n  },\n  \"partialScore\": {\n    \"home\": 5,\n    \"away\": 3,\n    \"homeSets\": 0,\n    \"awaySets\": 0\n  }\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/events — Listar eventos",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/events",
+            "description": ""
+          }
+        },
+        {
+          "name": "DELETE /matches/:id/events/last — Deshacer último evento",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/matches/{{match_id}}/events/last",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. Scorers (Goleadores/Anotadores)",
+      "item": [
+        {
+          "name": "POST /matches/:id/scorers — Registrar anotación",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/scorers",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamId\": \"{{team_id}}\",\n  \"playerId\": \"{{player_id}}\",\n  \"periodNumber\": 1,\n  \"matchMinute\": null,\n  \"points\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /matches/:id/scorers — Listar anotadores del partido",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/scorers",
+            "description": ""
+          }
+        },
+        {
+          "name": "DELETE /matches/:id/scorers/last — Deshacer último",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/matches/{{match_id}}/scorers/last",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/scorers?tournamentId — Top anotadores torneo",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/scorers?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. Standings (Clasificación)",
+      "item": [
+        {
+          "name": "GET /standings/:phaseId — Clasificación por fase",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/standings/{{phase_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /standings/groups/:tournamentId — Por grupos",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/standings/groups/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /standings/recalculate — Recalcular",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/standings/recalculate",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phaseId\": \"{{phase_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /standings/top-scorers/:tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/standings/top-scorers/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /standings/top-sanctioned/:tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/standings/top-sanctioned/{{tournament_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. Venues (CRUD + Many-to-Many)",
+      "item": [
+        {
+          "name": "GET /venues — Listar todas",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/venues",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /venues?tournamentId — Por torneo (legacy)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/venues?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /venues/by-tournament/:id — Por torneo (M2M)",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/venues/by-tournament/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /venues/:id — Detalle",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/venues/{{venue_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /venues — Crear sede",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/venues",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Coliseo Test\",\n  \"address\": \"Calle 100 #50-30\",\n  \"city\": \"Bogotá\",\n  \"capacity\": 300,\n  \"surfaceType\": \"wood\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /venues/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/venues/{{venue_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Coliseo Actualizado\",\n  \"capacity\": 500\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /venues/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/venues/{{venue_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /venues/link — Vincular sede a torneo",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/venues/link",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"venueId\": \"{{venue_id}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /venues/unlink — Desvincular sede",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/venues/unlink",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"venueId\": \"{{venue_id}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. Announcements (CRUD)",
+      "item": [
+        {
+          "name": "GET /announcements — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/announcements",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /announcements?tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/announcements?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /announcements/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/announcements/{{announcement_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /announcements — Crear",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/announcements",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"title\": \"Aviso importante\",\n  \"content\": \"Se reprograman los partidos del grupo A.\",\n  \"priority\": \"high\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /announcements/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/announcements/{{announcement_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Aviso actualizado\",\n  \"content\": \"Contenido actualizado.\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /announcements/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/announcements/{{announcement_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. Payments (CRUD)",
+      "item": [
+        {
+          "name": "GET /payments — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/payments",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /payments?tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/payments?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /payments/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/payments/{{payment_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /payments — Registrar pago",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/payments",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"teamId\": \"{{team_id}}\",\n  \"amount\": 150000,\n  \"paymentMethod\": \"transfer\",\n  \"reference\": \"TXN-001\",\n  \"notes\": \"Inscripción equipo\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /payments/:id — Actualizar estado",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/payments/{{payment_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"confirmed\",\n  \"notes\": \"Pago verificado\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /payments/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/payments/{{payment_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. Gallery (CRUD)",
+      "item": [
+        {
+          "name": "GET /gallery — Listar",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/gallery",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /gallery?tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/gallery?tournamentId={{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /gallery/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/gallery/{{gallery_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /gallery — Crear álbum/foto",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/gallery",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tournamentId\": \"{{tournament_id}}\",\n  \"title\": \"Jornada 1 — Fase de Grupos\",\n  \"description\": \"Fotos del primer día\",\n  \"imageUrl\": \"https://example.com/photo1.jpg\",\n  \"category\": \"match\"\n}"
+            }
+          }
+        },
+        {
+          "name": "PUT /gallery/:id — Actualizar",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/gallery/{{gallery_id}}",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Álbum actualizado\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /gallery/:id",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/gallery/{{gallery_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "16. Match Referees",
+      "item": [
+        {
+          "name": "GET /matches/:id/referees — Árbitros del partido",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/{{match_id}}/referees",
+            "description": ""
+          }
+        },
+        {
+          "name": "POST /matches/:id/referees — Asignar árbitro",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/matches/{{match_id}}/referees",
+            "description": "",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"userId\": \"{{user_id}}\",\n  \"refereeRole\": \"principal\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /matches/:id/referees/:userId — Desasignar",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/matches/{{match_id}}/referees/{{user_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /matches/referees?refereeId — Historial",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/matches/referees?refereeId={{user_id}}",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "17. Public Routes (No Auth)",
+      "item": [
+        {
+          "name": "GET /public/tournaments",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/tournaments",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /public/tournaments/:id",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/tournaments/{{tournament_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /public/teams?tournamentId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/teams?tournamentId={{tournament_id}}&pageSize=50",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /public/matches?phaseId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/matches?phaseId={{phase_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /public/standings/:phaseId",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/standings/{{phase_id}}",
+            "description": ""
+          }
+        },
+        {
+          "name": "GET /public/sports",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/public/sports",
+            "description": ""
+          }
+        }
+      ]
+    },
+    {
+      "name": "18. Health Checks",
+      "item": [
+        {
+          "name": "Gateway Health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health",
+            "description": ""
+          }
+        },
+        {
+          "name": "Sports Health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/sports/../health",
+            "description": ""
+          }
+        }
       ]
     }
   ]

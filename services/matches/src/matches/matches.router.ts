@@ -325,6 +325,18 @@ export function buildMatchesRouter(service: MatchesService): Router {
     }
   });
 
+  // GET /matches/:id/sanctions/types — get sanction types for the match's tournament
+  router.get('/:id/sanctions/types', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const types = await service.getSanctionTypesForMatch(id);
+      res.json({ data: types });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));
+      next(err);
+    }
+  });
+
   // ── Match Events ──────────────────────────────────────────────────────────
 
   router.post('/:id/events', async (req: Request, res: Response, next: NextFunction) => {

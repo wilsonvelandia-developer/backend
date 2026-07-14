@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { Pool } from 'pg';
 import { z, ZodError } from 'zod';
-import { ValidationError, UnauthorizedError } from '@tournament/shared';
+import { ValidationError, UnauthorizedError, ForbiddenError } from '@tournament/shared';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 
@@ -234,6 +234,60 @@ router.get('/me', async (req: Request, res: Response, next: NextFunction) => {
 router.post('/register', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const dto = registerSchema.parse(req.body);
+
+    // ── Permission check: who can create users? ─────────────────────────────
+    // Verify the creating user has permission based on their role and can_create_users flag
+    let creatorRoles: string[] = [];
+    try {
+      const creatorPayload = verifyTokenFromCookie(req);
+      const creatorId = creatorPayload['sub'] as string;
+      const creatorRolesResult = await pool.query<{ role_id: string; can_create_users: boolean }>(
+        `SELECT ur.role_id, r.can_create_users
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+         WHERE ur.user_id = $1`,
+        [creatorId],
+      );
+      creatorRoles = creatorRolesResult.rows.map((r) => r.role_id);
+      const canCreate = creatorRolesResult.rows.some((r) => r.can_create_users);
+
+      if (!canCreate) {
+        return next(new ForbiddenError('Tu perfil no tiene permisos para crear usuarios'));
+      }
+
+      // Validate role assignment rules:
+      // - Only admin can assign 'admin' or 'organizer' roles
+      // - Organizer can assign: coach, assistant, delegate, fitness_coach, coordinator, president, player, parent, companion, referee, observer
+      // - Coach/President can assign: player, parent, companion
+      const requestedRoles = dto.roles;
+      const adminOnlyRoles = ['admin', 'organizer'];
+      const organizerCanAssign = ['coach', 'assistant', 'delegate', 'fitness_coach', 'coordinator', 'president', 'player', 'parent', 'companion', 'referee', 'observer'];
+      const coachCanAssign = ['player', 'parent', 'companion'];
+
+      if (!creatorRoles.includes('admin')) {
+        // Non-admin trying to assign admin-only roles
+        if (requestedRoles.some((r) => adminOnlyRoles.includes(r))) {
+          return next(new ForbiddenError('Solo administradores pueden asignar el rol de administrador u organizador'));
+        }
+
+        // Organizer can assign broader set
+        if (creatorRoles.includes('organizer')) {
+          if (!requestedRoles.every((r) => organizerCanAssign.includes(r))) {
+            return next(new ForbiddenError('No tienes permisos para asignar ese rol'));
+          }
+        } else {
+          // Coach/President can only assign player/parent/companion
+          if (!requestedRoles.every((r) => coachCanAssign.includes(r))) {
+            return next(new ForbiddenError('Solo puedes registrar jugadores, padres o acompañantes'));
+          }
+        }
+      }
+    } catch {
+      // No valid session — only allow self-registration as companion (spectator)
+      if (dto.roles.length !== 1 || dto.roles[0] !== 'companion') {
+        return next(new UnauthorizedError('Autenticación requerida para crear usuarios con este rol'));
+      }
+    }
 
     // Check if email already exists
     const existing = await pool.query(`SELECT id FROM users WHERE email = $1`, [dto.email]);

@@ -64,4 +64,51 @@ export class GalleryRepository {
     const result = await this.pool.query(`DELETE FROM gallery_photos WHERE id = $1`, [id]);
     if (result.rowCount === 0) throw new NotFoundError('GalleryPhoto', id);
   }
+
+  // ── Album Photos ────────────────────────────────────────────────────────
+
+  /**
+   * Returns all photos belonging to an album (parent_id = albumId).
+   */
+  async getAlbumPhotos(albumId: string): Promise<Array<{ id: string; imageUrl: string; createdAt: string }>> {
+    const result = await this.pool.query<{ id: string; url: string; created_at: Date }>(
+      `SELECT id, url, created_at FROM gallery_photos WHERE parent_id = $1 ORDER BY created_at ASC`,
+      [albumId],
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      imageUrl: r.url,
+      createdAt: r.created_at.toISOString(),
+    }));
+  }
+
+  /**
+   * Adds a photo to an album.
+   */
+  async addPhotoToAlbum(albumId: string, imageUrl: string, uploadedBy: string | null): Promise<{ id: string; imageUrl: string }> {
+    // Get album's tournament_id to inherit
+    const album = await this.pool.query<{ tournament_id: string | null }>(
+      `SELECT tournament_id FROM gallery_photos WHERE id = $1`,
+      [albumId],
+    );
+    const tournamentId = album.rows[0]?.tournament_id ?? null;
+
+    const result = await this.pool.query<{ id: string; url: string }>(
+      `INSERT INTO gallery_photos (parent_id, tournament_id, uploaded_by, url)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, url`,
+      [albumId, tournamentId, uploadedBy, imageUrl],
+    );
+    return { id: result.rows[0].id, imageUrl: result.rows[0].url };
+  }
+
+  /**
+   * Removes a photo from an album by URL.
+   */
+  async removePhotoFromAlbum(albumId: string, imageUrl: string): Promise<void> {
+    await this.pool.query(
+      `DELETE FROM gallery_photos WHERE parent_id = $1 AND url = $2`,
+      [albumId, imageUrl],
+    );
+  }
 }

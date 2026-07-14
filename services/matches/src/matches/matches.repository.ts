@@ -91,28 +91,115 @@ export class MatchesRepository {
     const values: unknown[] = [];
     let idx = 1;
 
-    if (filters.phaseId) { conditions.push(`phase_id = $${idx++}`);                                   values.push(filters.phaseId); }
-    if (filters.teamId)  { conditions.push(`(home_team_id = $${idx} OR away_team_id = $${idx++})`);  values.push(filters.teamId); }
-    if (filters.status)  { conditions.push(`status = $${idx++}`);                                    values.push(filters.status); }
+    if (filters.phaseId) { conditions.push(`m.phase_id = $${idx++}`);                                  values.push(filters.phaseId); }
+    if (filters.teamId)  { conditions.push(`(m.home_team_id = $${idx} OR m.away_team_id = $${idx++})`); values.push(filters.teamId); }
+    if (filters.status)  { conditions.push(`m.status = $${idx++}`);                                    values.push(filters.status); }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await this.pool.query<MatchRow>(
-      `SELECT * FROM matches ${where} ORDER BY scheduled_at ASC NULLS LAST, created_at ASC`,
+    const result = await this.pool.query<MatchRow & { home_team_name: string; away_team_name: string; home_score: number; away_score: number }>(
+      `SELECT m.*,
+              ht.name AS home_team_name,
+              at.name AS away_team_name,
+              COALESCE((SELECT SUM(mp.home_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS home_score,
+              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS away_score
+       FROM matches m
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
+       ${where}
+       ORDER BY m.scheduled_at ASC NULLS LAST, m.created_at ASC`,
       values,
     );
-    return result.rows.map(mapMatchRow);
+
+    // Load period details for finished/in_progress matches (for volleyball set scores)
+    const matchIds = result.rows.filter((r) => r.status !== 'scheduled').map((r) => r.id);
+    let periodsMap = new Map<string, Array<{ periodNumber: number; homeScore: number; awayScore: number; status: string }>>();
+
+    if (matchIds.length > 0) {
+      const periodsResult = await this.pool.query<{
+        match_id: string; period_number: number; home_score: number; away_score: number; status: string;
+      }>(
+        `SELECT match_id, period_number, home_score, away_score, status
+         FROM match_periods
+         WHERE match_id = ANY($1::uuid[])
+         ORDER BY match_id, period_number ASC`,
+        [matchIds],
+      );
+      for (const row of periodsResult.rows) {
+        if (!periodsMap.has(row.match_id)) periodsMap.set(row.match_id, []);
+        periodsMap.get(row.match_id)!.push({
+          periodNumber: row.period_number,
+          homeScore: row.home_score,
+          awayScore: row.away_score,
+          status: row.status,
+        });
+      }
+    }
+
+    return result.rows.map((row) => {
+      const periods = periodsMap.get(row.id);
+      // For set-based sports: compute sets won as main score
+      let homeSetsWon = 0;
+      let awaySetsWon = 0;
+      if (periods && periods.length > 2) {
+        homeSetsWon = periods.filter((p) => p.status === 'finished' && p.homeScore > p.awayScore).length;
+        awaySetsWon = periods.filter((p) => p.status === 'finished' && p.awayScore > p.homeScore).length;
+      }
+
+      return {
+        ...mapMatchRow(row),
+        homeTeamName: row.home_team_name,
+        awayTeamName: row.away_team_name,
+        homeScore: row.home_score,
+        awayScore: row.away_score,
+        homeSetsWon,
+        awaySetsWon,
+        periods: periods ?? [],
+      };
+    });
   }
 
   async findById(id: string): Promise<MatchDetail> {
-    const matchResult = await this.pool.query<MatchRow>(`SELECT * FROM matches WHERE id = $1`, [id]);
+    const matchResult = await this.pool.query<MatchRow & {
+      home_team_name: string; away_team_name: string;
+      home_total_score: number; away_total_score: number;
+      home_color_primary: string | null; home_color_secondary: string | null;
+      away_color_primary: string | null; away_color_secondary: string | null;
+    }>(
+      `SELECT m.*,
+              ht.name AS home_team_name,
+              at.name AS away_team_name,
+              ht.color_primary AS home_color_primary,
+              ht.color_secondary AS home_color_secondary,
+              at.color_primary AS away_color_primary,
+              at.color_secondary AS away_color_secondary,
+              COALESCE((SELECT SUM(mp.home_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS home_total_score,
+              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS away_total_score
+       FROM matches m
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
+       WHERE m.id = $1`,
+      [id],
+    );
     if (matchResult.rowCount === 0) throw new NotFoundError('Match', id);
 
     const periodsResult = await this.pool.query<MatchPeriodRow>(
       `SELECT * FROM match_periods WHERE match_id = $1 ORDER BY period_number ASC`,
       [id],
     );
+
+    const row = matchResult.rows[0];
     return {
-      match:   mapMatchRow(matchResult.rows[0]),
+      match: {
+        ...mapMatchRow(row),
+        homeTeamName: row.home_team_name,
+        awayTeamName: row.away_team_name,
+        homeScore: row.home_total_score,
+        awayScore: row.away_total_score,
+        homeColorPrimary: row.home_color_primary,
+        homeColorSecondary: row.home_color_secondary,
+        awayColorPrimary: row.away_color_primary,
+        awayColorSecondary: row.away_color_secondary,
+      },
       periods: periodsResult.rows.map(mapPeriodRow),
     };
   }
@@ -275,33 +362,153 @@ export class MatchesRepository {
    */
   async finishMatch(id: string): Promise<MatchDetail> {
     const rules = await this.loadSportRules(id);
-    const engine = new SportRulesEngine(rules);
 
-    const { match, periods } = await this.findById(id);
+    const { match } = await this.findById(id);
     if (match.status !== 'in_progress') {
       throw new BusinessRuleError(`Cannot finish a match with status '${match.status}'`);
     }
 
-    const rawPeriods = periods.map((p) => ({
-      id: p.id, match_id: p.matchId, period_number: p.periodNumber,
-      home_score: p.homeScore, away_score: p.awayScore, status: p.status,
-    } as MatchPeriodRow));
+    // Force-finish all periods first
+    await this.pool.query(
+      `UPDATE match_periods SET status = 'finished' WHERE match_id = $1 AND status != 'finished'`,
+      [id],
+    );
 
-    const winner = engine.matchWinner(match.homeTeamId, match.awayTeamId, rawPeriods);
-    const winnerId = (winner === 'draw' || winner === null) ? null : winner;
+    // Re-read periods after forcing finish
+    const updatedPeriods = await this.pool.query<MatchPeriodRow>(
+      `SELECT * FROM match_periods WHERE match_id = $1 ORDER BY period_number ASC`,
+      [id],
+    );
+
+    // Determine winner from actual scores
+    let winnerId: string | null = null;
+
+    if (rules.hasSets && rules.setsToWin !== null) {
+      // Set-based: count sets won
+      let homeSets = 0;
+      let awaySets = 0;
+      for (const p of updatedPeriods.rows) {
+        if (p.home_score > p.away_score) homeSets++;
+        else if (p.away_score > p.home_score) awaySets++;
+      }
+      if (homeSets > awaySets) winnerId = match.homeTeamId;
+      else if (awaySets > homeSets) winnerId = match.awayTeamId;
+    } else {
+      // Period-based: sum all period scores
+      const homeTotal = updatedPeriods.rows.reduce((s, p) => s + p.home_score, 0);
+      const awayTotal = updatedPeriods.rows.reduce((s, p) => s + p.away_score, 0);
+      if (homeTotal > awayTotal) winnerId = match.homeTeamId;
+      else if (awayTotal > homeTotal) winnerId = match.awayTeamId;
+      // else: draw → winnerId stays null
+    }
 
     await this.pool.query(
       `UPDATE matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2`,
       [winnerId, id],
     );
 
-    // Mark all pending periods as finished
-    await this.pool.query(
-      `UPDATE match_periods SET status = 'finished' WHERE match_id = $1 AND status != 'finished'`,
-      [id],
+    return this.findById(id);
+  }
+
+  // ── Standings recalculation (triggered after match finish) ─────────────────
+
+  /**
+   * Recalculates standings for a phase by calling the standings recalculation logic.
+   * This uses the same pool to compute wins/losses/draws from finished matches.
+   */
+  async recalculateStandings(phaseId: string): Promise<void> {
+    // Load sport rules for this phase
+    const sportResult = await this.pool.query<{
+      has_sets: boolean;
+      tournament_id: string;
+    }>(
+      `SELECT s.has_sets, t.id AS tournament_id
+       FROM phases ph
+       JOIN tournaments t ON t.id = ph.tournament_id
+       JOIN sports s ON s.id = t.sport_id
+       WHERE ph.id = $1`,
+      [phaseId],
+    );
+    if (sportResult.rowCount === 0) return;
+
+    const { has_sets, tournament_id } = sportResult.rows[0];
+    const winPts = has_sets ? 3 : 3;
+    const drawPts = has_sets ? 0 : 1;
+    const lossPts = 0;
+
+    // Load all teams in the tournament
+    const teamsResult = await this.pool.query<{ id: string }>(
+      `SELECT id FROM teams WHERE tournament_id = $1`,
+      [tournament_id],
+    );
+    if (teamsResult.rowCount === 0) return;
+    const teamIds = teamsResult.rows.map((r) => r.id);
+
+    // Load all finished matches for the phase
+    const matchesResult = await this.pool.query<{
+      home_team_id: string; away_team_id: string; winner_id: string | null;
+      home_total: number; away_total: number; home_sets: number; away_sets: number;
+    }>(
+      `SELECT
+         m.home_team_id, m.away_team_id, m.winner_id,
+         COALESCE(SUM(mp.home_score), 0)::int AS home_total,
+         COALESCE(SUM(mp.away_score), 0)::int AS away_total,
+         COALESCE(SUM(CASE WHEN mp.home_score > mp.away_score THEN 1 ELSE 0 END), 0)::int AS home_sets,
+         COALESCE(SUM(CASE WHEN mp.away_score > mp.home_score THEN 1 ELSE 0 END), 0)::int AS away_sets
+       FROM matches m
+       LEFT JOIN match_periods mp ON mp.match_id = m.id AND mp.status = 'finished'
+       WHERE m.phase_id = $1 AND m.status = 'finished'
+       GROUP BY m.id`,
+      [phaseId],
     );
 
-    return this.findById(id);
+    // Build standings
+    const statsMap = new Map<string, {
+      played: number; wins: number; draws: number; losses: number; points: number;
+      setsWon: number; setsLost: number; scoreFor: number; scoreAgainst: number;
+    }>();
+    for (const tid of teamIds) {
+      statsMap.set(tid, { played: 0, wins: 0, draws: 0, losses: 0, points: 0, setsWon: 0, setsLost: 0, scoreFor: 0, scoreAgainst: 0 });
+    }
+    for (const match of matchesResult.rows) {
+      const home = statsMap.get(match.home_team_id);
+      const away = statsMap.get(match.away_team_id);
+      if (!home || !away) continue;
+      home.played++; away.played++;
+      home.setsWon += match.home_sets; home.setsLost += match.away_sets;
+      away.setsWon += match.away_sets; away.setsLost += match.home_sets;
+      home.scoreFor += match.home_total; home.scoreAgainst += match.away_total;
+      away.scoreFor += match.away_total; away.scoreAgainst += match.home_total;
+      if (match.winner_id === match.home_team_id) {
+        home.wins++; home.points += winPts; away.losses++; away.points += lossPts;
+      } else if (match.winner_id === match.away_team_id) {
+        away.wins++; away.points += winPts; home.losses++; home.points += lossPts;
+      } else {
+        home.draws++; home.points += drawPts; away.draws++; away.points += drawPts;
+      }
+    }
+
+    // Upsert standings
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const [teamId, stats] of statsMap) {
+        await client.query(
+          `INSERT INTO standings (phase_id, team_id, played, wins, draws, losses, points, sets_won, sets_lost, score_for, score_against, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW())
+           ON CONFLICT (phase_id, team_id) DO UPDATE SET
+             played=$3, wins=$4, draws=$5, losses=$6, points=$7,
+             sets_won=$8, sets_lost=$9, score_for=$10, score_against=$11, updated_at=NOW()`,
+          [phaseId, teamId, stats.played, stats.wins, stats.draws, stats.losses, stats.points,
+           stats.setsWon, stats.setsLost, stats.scoreFor, stats.scoreAgainst],
+        );
+      }
+      await client.query('COMMIT');
+    } catch {
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
+    }
   }
 
   // ── Volleyball lineup & rotation ──────────────────────────────────────────
@@ -550,12 +757,14 @@ export class MatchesRepository {
    * For volleyball: replaces the outgoing player in the rotation with the incoming player.
    * The incoming player takes the exact rotation slot of the outgoing player.
    * Validates that the outgoing player is currently on court.
+   * Falls back to match_lineups if volleyball_rotations has no data for this set.
    */
   private async applyVolleyballSubstitution(
     matchId: string,
     dto: SubstitutionDto,
     _engine: SportRulesEngine,
   ): Promise<void> {
+    // First try volleyball_rotations table
     const outgoingSlot = await this.pool.query<RotationRow>(
       `SELECT * FROM volleyball_rotations
        WHERE match_id = $1 AND team_id = $2 AND set_number = $3 AND player_id = $4`,
@@ -563,8 +772,40 @@ export class MatchesRepository {
     );
 
     if (outgoingSlot.rowCount === 0) {
+      // Fallback: check if rotations exist at all for this set
+      const anyRotation = await this.pool.query(
+        `SELECT 1 FROM volleyball_rotations WHERE match_id = $1 AND team_id = $2 AND set_number = $3 LIMIT 1`,
+        [matchId, dto.teamId, dto.periodNumber],
+      );
+
+      if ((anyRotation.rowCount ?? 0) === 0) {
+        // No rotations registered for this set — check match_lineups instead
+        const lineupCheck = await this.pool.query(
+          `SELECT 1 FROM match_lineups
+           WHERE match_id = $1 AND team_id = $2 AND player_id = $3 AND is_starter = true`,
+          [matchId, dto.teamId, dto.playerOutId],
+        );
+
+        if (lineupCheck.rowCount === 0) {
+          // Also check if player is in the team's player list (least strict)
+          const playerCheck = await this.pool.query(
+            `SELECT 1 FROM players WHERE id = $1 AND team_id = $2`,
+            [dto.playerOutId, dto.teamId],
+          );
+          if (playerCheck.rowCount === 0) {
+            throw new BusinessRuleError(
+              'El jugador que sale no pertenece al equipo',
+              { playerOutId: dto.playerOutId },
+            );
+          }
+        }
+        // No rotation data — skip rotation slot update (managed by frontend)
+        return;
+      }
+
+      // Rotations exist but player not found — actual error
       throw new BusinessRuleError(
-        'Player being substituted out is not in the current rotation for this set',
+        'El jugador que sale no está en la rotación actual de este set',
         { playerOutId: dto.playerOutId, setNumber: dto.periodNumber },
       );
     }
@@ -577,7 +818,7 @@ export class MatchesRepository {
     );
     if ((incomingOnCourt.rowCount ?? 0) > 0) {
       throw new BusinessRuleError(
-        'Player being substituted in is already on court',
+        'El jugador que ingresa ya está en cancha',
         { playerInId: dto.playerInId },
       );
     }
@@ -772,10 +1013,29 @@ export class MatchesRepository {
     const matchResult = await this.pool.query<MatchRow>(`SELECT status FROM matches WHERE id = $1`, [matchId]);
     if (matchResult.rowCount === 0) throw new NotFoundError('Match', matchId);
 
+    // Compute partial score at this moment if not explicitly provided
+    let partialScore = dto.partialScore ?? null;
+    if (!partialScore) {
+      const periodsResult = await this.pool.query<MatchPeriodRow>(
+        `SELECT * FROM match_periods WHERE match_id = $1 ORDER BY period_number ASC`,
+        [matchId],
+      );
+      const periods = periodsResult.rows;
+      const currentPeriod = periods.find((p) => p.status === 'in_progress') ?? periods[periods.length - 1];
+      const homeSets = periods.filter((p) => p.status === 'finished' && p.home_score > p.away_score).length;
+      const awaySets = periods.filter((p) => p.status === 'finished' && p.away_score > p.home_score).length;
+      partialScore = {
+        home: currentPeriod?.home_score ?? 0,
+        away: currentPeriod?.away_score ?? 0,
+        homeSets,
+        awaySets,
+      };
+    }
+
     const result = await this.pool.query<MatchEventRow>(
-      `INSERT INTO match_events (match_id, event_type, team_id, player_id, period_number, match_minute, payload)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [matchId, dto.eventType, dto.teamId, dto.playerId, dto.periodNumber, dto.matchMinute, JSON.stringify(dto.payload)],
+      `INSERT INTO match_events (match_id, event_type, team_id, player_id, period_number, match_minute, payload, partial_score)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [matchId, dto.eventType, dto.teamId, dto.playerId, dto.periodNumber, dto.matchMinute, JSON.stringify(dto.payload), JSON.stringify(partialScore)],
     );
 
     return mapEventRow(result.rows[0]);
@@ -788,6 +1048,7 @@ export class MatchesRepository {
     const result = await this.pool.query<MatchEventRow>(
       `SELECT me.*,
               p.name AS player_name,
+              p.jersey_number AS player_jersey,
               t.name AS team_name
        FROM match_events me
        LEFT JOIN players p ON p.id = me.player_id
@@ -889,22 +1150,34 @@ export class MatchesRepository {
 
     const result = await this.pool.query<MatchRow & {
       tournament_name: string; sport_name: string; category: string | null;
+      home_team_name: string; away_team_name: string;
+      home_score: number; away_score: number;
     }>(
       `SELECT DISTINCT m.*,
               t.name AS tournament_name,
               s.name AS sport_name,
-              t.category
+              t.category,
+              ht.name AS home_team_name,
+              at.name AS away_team_name,
+              COALESCE((SELECT SUM(mp.home_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS home_score,
+              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS away_score
        FROM matches m
        JOIN phases p ON p.id = m.phase_id
        JOIN tournaments t ON t.id = p.tournament_id
        JOIN sports s ON s.id = t.sport_id
        JOIN tournament_staff ts ON ts.tournament_id = p.tournament_id
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
        WHERE ${conditions.join(' AND ')}
        ORDER BY m.scheduled_at ASC NULLS LAST, m.created_at ASC`,
       values,
     );
     return result.rows.map((row) => ({
       ...mapMatchRow(row),
+      homeTeamName: row.home_team_name,
+      awayTeamName: row.away_team_name,
+      homeScore: row.home_score,
+      awayScore: row.away_score,
       tournamentName: row.tournament_name,
       sportName: row.sport_name,
       category: row.category,
@@ -1143,22 +1416,41 @@ export class MatchesRepository {
          p.name AS "playerName",
          t.name AS "teamName",
          t.short_name AS "teamShort",
-         COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END)::int AS "goals",
-         COUNT(CASE WHEN ms.event_type = 'assist' THEN 1 END)::int AS "assists",
+         COUNT(*)::int AS "goals",
+         0 AS "assists",
          COUNT(DISTINCT ms.match_id)::int AS "matchesPlayed",
-         ROUND(COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END)::numeric /
-               NULLIF(COUNT(DISTINCT ms.match_id), 0), 2)::float AS "goalsPerMatch"
+         ROUND(COUNT(*)::numeric / NULLIF(COUNT(DISTINCT ms.match_id), 0), 2)::float AS "goalsPerMatch"
        FROM match_scorers ms
        JOIN players p ON p.id = ms.player_id
-       JOIN teams t ON t.id = p.team_id
+       JOIN teams t ON t.id = ms.team_id
        JOIN matches m ON m.id = ms.match_id
        JOIN phases ph ON ph.id = m.phase_id
        WHERE ph.tournament_id = $1
        GROUP BY ms.player_id, p.name, t.name, t.short_name
-       HAVING COUNT(CASE WHEN ms.event_type = 'goal' THEN 1 END) > 0
-       ORDER BY "goals" DESC, "assists" DESC
+       HAVING COUNT(*) > 0
+       ORDER BY "goals" DESC, "matchesPlayed" ASC
        LIMIT 50`,
       [tournamentId],
+    );
+    return result.rows;
+  }
+
+  /**
+   * Returns sanction types configured for the tournament that owns this match.
+   */
+  async findSanctionTypesForMatch(matchId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT st.id, st.name, st.code, st.color, st.icon,
+              st.points_effect AS "pointsEffect",
+              st.monetary_value AS "monetaryValue",
+              st.accumulation_limit AS "accumulationLimit"
+       FROM sanction_types st
+       JOIN tournaments t ON t.id = st.tournament_id
+       JOIN phases p ON p.tournament_id = t.id
+       JOIN matches m ON m.phase_id = p.id
+       WHERE m.id = $1
+       ORDER BY st.name`,
+      [matchId],
     );
     return result.rows;
   }

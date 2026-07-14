@@ -130,7 +130,16 @@ export interface TournamentSubRules {
 // ── Match detail (match + periods) ────────────────────────────────────────────
 
 export interface MatchDetail {
-  match:   Match;
+  match:   Match & {
+    homeTeamName?: string;
+    awayTeamName?: string;
+    homeScore?: number;
+    awayScore?: number;
+    homeColorPrimary?: string | null;
+    homeColorSecondary?: string | null;
+    awayColorPrimary?: string | null;
+    awayColorSecondary?: string | null;
+  };
   periods: MatchPeriod[];
 }
 
@@ -207,9 +216,11 @@ export interface MatchEventRow {
   period_number: number;
   match_minute:  number | null;
   payload:       Record<string, unknown>;
+  partial_score: Record<string, unknown> | null;
   created_at:    Date;
   // Joined fields
   player_name?:  string;
+  player_jersey?: number;
   team_name?:    string;
 }
 
@@ -222,8 +233,10 @@ export interface MatchEvent {
   periodNumber: number;
   matchMinute:  number | null;
   payload:      Record<string, unknown>;
+  partialScore: Record<string, unknown> | null;
   createdAt:    string;
   playerName?:  string;
+  playerJersey?: number;
   teamName?:    string;
 }
 
@@ -237,8 +250,10 @@ export function mapEventRow(row: MatchEventRow): MatchEvent {
     periodNumber: row.period_number,
     matchMinute:  row.match_minute,
     payload:      row.payload,
+    partialScore: row.partial_score,
     createdAt:    row.created_at.toISOString(),
     playerName:   row.player_name,
+    playerJersey: row.player_jersey,
     teamName:     row.team_name,
   };
 }

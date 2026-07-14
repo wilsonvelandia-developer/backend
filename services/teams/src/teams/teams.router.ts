@@ -8,6 +8,49 @@ import {
   listTeamsSchema,
 } from './teams.schema.js';
 
+/** Roles that should NOT see sensitive player data (documents, EPS, parent info). */
+const PUBLIC_ROLES = ['player', 'parent', 'companion', 'observer'];
+
+/** Sensitive fields that are stripped for public roles. */
+const SENSITIVE_FIELDS = [
+  'documentNumber', 'document_number',
+  'documentType', 'document_type',
+  'documentFrontUrl', 'document_front_url',
+  'documentBackUrl', 'document_back_url',
+  'epsFileUrl', 'eps_file_url',
+  'parentName', 'parent_name',
+  'parentPhone', 'parent_phone',
+  'parentEmail', 'parent_email',
+  'address', 'birthDate', 'birth_date',
+];
+
+/** Parse x-user-roles header into string array. */
+function parseRolesHeader(req: Request): string[] {
+  try {
+    const raw = req.headers['x-user-roles'] as string | undefined;
+    if (!raw) return [];
+    return JSON.parse(raw) as string[];
+  } catch { return []; }
+}
+
+/** Returns true if the user should see a reduced DTO (no sensitive data). */
+function shouldFilterSensitiveData(roles: string[]): boolean {
+  if (roles.length === 0) return true;
+  if (roles.includes('admin') || roles.includes('organizer')) return false;
+  if (roles.includes('coach') || roles.includes('president')) return false;
+  // All other roles get filtered data
+  return roles.every((r) => PUBLIC_ROLES.includes(r) || ['assistant', 'delegate', 'fitness_coach', 'coordinator', 'referee'].includes(r));
+}
+
+/** Strips sensitive fields from a player object. */
+function stripSensitivePlayerFields(player: Record<string, unknown>): Record<string, unknown> {
+  const filtered = { ...player };
+  for (const field of SENSITIVE_FIELDS) {
+    delete filtered[field];
+  }
+  return filtered;
+}
+
 /**
  * Teams router.
  *
@@ -109,7 +152,14 @@ export function buildTeamsRouter(service: TeamsService): Router {
     try {
       const { id } = teamIdSchema.parse(req.params);
       const players = await service.getPlayers(id);
-      res.json({ data: players });
+
+      // Filter sensitive fields for public/read-only roles
+      const userRoles = parseRolesHeader(req);
+      const filtered = shouldFilterSensitiveData(userRoles)
+        ? players.map(stripSensitivePlayerFields)
+        : players;
+
+      res.json({ data: filtered });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid team id', parseZodError(err)));
       next(err);
@@ -120,7 +170,14 @@ export function buildTeamsRouter(service: TeamsService): Router {
     try {
       const { id, playerId } = playerParamsSchema.parse(req.params);
       const player = await service.getPlayerById(id, playerId);
-      res.json({ data: player });
+
+      // Filter sensitive fields for public/read-only roles
+      const userRoles = parseRolesHeader(req);
+      const filtered = shouldFilterSensitiveData(userRoles)
+        ? stripSensitivePlayerFields(player)
+        : player;
+
+      res.json({ data: filtered });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
       next(err);

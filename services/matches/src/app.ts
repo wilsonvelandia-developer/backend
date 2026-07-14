@@ -4,6 +4,7 @@ import { pinoHttp }             from 'pino-http';
 import { pool, checkDbConnection } from './db/pool.js';
 import { MatchesRepository }    from './matches/matches.repository.js';
 import { MatchesService }       from './matches/matches.service.js';
+import { NotificationsHelper }  from './matches/notifications.helper.js';
 import { buildMatchesRouter }   from './matches/matches.router.js';
 import { errorMiddleware }      from './middleware/error.middleware.js';
 import { logger }               from './logger.js';
@@ -34,8 +35,9 @@ export async function createApp() {
     }
   });
 
-  const repo    = new MatchesRepository(pool);
-  const service = new MatchesService(repo);
+  const repo          = new MatchesRepository(pool);
+  const notifications = new NotificationsHelper(pool);
+  const service       = new MatchesService(repo, notifications);
 
   app.use('/matches', buildMatchesRouter(service));
 

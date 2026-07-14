@@ -274,4 +274,20 @@ export class TournamentsService {
   async deleteEnrollment(tournamentId: string, enrollmentId: string): Promise<void> {
     return this.repo.deleteEnrollment(tournamentId, enrollmentId);
   }
+
+  // ── Observations (Veedor / Observer) ──────────────────────────────────────
+
+  async getObservations(tournamentId: string, userId?: string): Promise<unknown[]> {
+    return this.repo.getObservations(tournamentId, userId);
+  }
+
+  async createObservation(
+    tournamentId: string,
+    userId: string,
+    subject: string,
+    body: string,
+    matchId?: string,
+  ): Promise<unknown> {
+    return this.repo.createObservation(tournamentId, userId, subject, body, matchId);
+  }
 }

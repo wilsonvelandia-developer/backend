@@ -40,4 +40,16 @@ export class VenuesService {
   async delete(id: string): Promise<void> {
     return this.repo.delete(id);
   }
+
+  async getByTournament(tournamentId: string): Promise<Venue[]> {
+    return this.repo.findByTournament(tournamentId);
+  }
+
+  async linkToTournament(tournamentId: string, venueId: string): Promise<void> {
+    return this.repo.linkToTournament(tournamentId, venueId);
+  }
+
+  async unlinkFromTournament(tournamentId: string, venueId: string): Promise<void> {
+    return this.repo.unlinkFromTournament(tournamentId, venueId);
+  }
 }

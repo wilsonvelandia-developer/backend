@@ -70,5 +70,46 @@ export function buildGalleryRouter(service: GalleryService): Router {
     }
   });
 
+  // ── Album Photos (sub-resources) ──────────────────────────────────────────
+
+  // GET /gallery/:id/photos — list photos in an album
+  router.get('/:id/photos', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = galleryPhotoIdSchema.parse(req.params);
+      const photos = await service.getAlbumPhotos(id);
+      res.json({ data: photos });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid id', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // POST /gallery/:id/photos — add a photo to an album
+  router.post('/:id/photos', requireRole('admin', 'organizer'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = galleryPhotoIdSchema.parse(req.params);
+      const { imageUrl } = req.body as { imageUrl: string };
+      if (!imageUrl) return next(new ValidationError('imageUrl is required'));
+      const uploadedBy = (req.headers['x-user-id'] as string) || null;
+      const photo = await service.addPhotoToAlbum(id, imageUrl, uploadedBy);
+      res.status(201).json({ data: photo });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /gallery/:id/photos/remove — remove a photo from an album
+  router.post('/:id/photos/remove', requireRole('admin', 'organizer'), async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = galleryPhotoIdSchema.parse(req.params);
+      const { imageUrl } = req.body as { imageUrl: string };
+      if (!imageUrl) return next(new ValidationError('imageUrl is required'));
+      await service.removePhotoFromAlbum(id, imageUrl);
+      res.status(204).send();
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

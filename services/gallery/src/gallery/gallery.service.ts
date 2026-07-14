@@ -34,4 +34,18 @@ export class GalleryService {
   async delete(id: string): Promise<void> {
     return this.repo.delete(id);
   }
+
+  // ── Album Photos ────────────────────────────────────────────────────────
+
+  async getAlbumPhotos(albumId: string): Promise<Array<{ id: string; imageUrl: string; createdAt: string }>> {
+    return this.repo.getAlbumPhotos(albumId);
+  }
+
+  async addPhotoToAlbum(albumId: string, imageUrl: string, uploadedBy: string | null): Promise<{ id: string; imageUrl: string }> {
+    return this.repo.addPhotoToAlbum(albumId, imageUrl, uploadedBy);
+  }
+
+  async removePhotoFromAlbum(albumId: string, imageUrl: string): Promise<void> {
+    return this.repo.removePhotoFromAlbum(albumId, imageUrl);
+  }
 }

@@ -103,13 +103,19 @@ export type CreateSanctionDto = z.infer<typeof createSanctionSchema>;
 export const createMatchEventSchema = z.object({
   eventType: z.enum([
     'score', 'substitution', 'sanction', 'rotation',
-    'period_start', 'period_end', 'timeout', 'match_start', 'match_end',
+    'period_start', 'period_end', 'timeout', 'match_start', 'match_end', 'set_end',
   ]),
   teamId:       z.string().uuid().nullable().default(null),
   playerId:     z.string().uuid().nullable().default(null),
   periodNumber: z.number().int().min(1),
   matchMinute:  z.number().int().min(0).nullable().default(null),
   payload:      z.record(z.unknown()).default({}),
+  partialScore: z.object({
+    home: z.number().int().min(0),
+    away: z.number().int().min(0),
+    homeSets: z.number().int().min(0).default(0),
+    awaySets: z.number().int().min(0).default(0),
+  }).nullable().default(null),
 });
 
 export type CreateMatchEventDto = z.infer<typeof createMatchEventSchema>;
