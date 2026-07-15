@@ -1,0 +1,56 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Unified Dockerfile — single container for all backend services
+# Deploys the entire backend as one process (~$5/mo on Railway/Render)
+#
+# Build: docker build -f Dockerfile.unified -t olimpicapp-backend .
+# Run:   docker run -p 3000:3000 --env-file .env olimpicapp-backend
+# ═══════════════════════════════════════════════════════════════════════════════
+
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package.json package-lock.json ./
+COPY shared/package.json shared/
+COPY services/gateway/package.json services/gateway/
+COPY services/sports/package.json services/sports/
+COPY services/tournaments/package.json services/tournaments/
+COPY services/teams/package.json services/teams/
+COPY services/matches/package.json services/matches/
+COPY services/standings/package.json services/standings/
+COPY services/venues/package.json services/venues/
+COPY services/announcements/package.json services/announcements/
+COPY services/payments/package.json services/payments/
+COPY services/gallery/package.json services/gallery/
+
+# Install all dependencies
+RUN npm ci
+
+# Copy source
+COPY tsconfig.base.json tsconfig.unified.json server-unified.ts ./
+COPY shared/ shared/
+COPY services/ services/
+
+# Build unified server
+RUN npx tsc -p tsconfig.unified.json
+
+# ── Production image ──────────────────────────────────────────────────────────
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production
+
+# Copy compiled output and node_modules
+COPY --from=builder /app/dist-unified ./dist-unified
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./
+
+# Copy OpenAPI spec for Swagger UI
+COPY services/gateway/src/docs/ ./dist-unified/services/gateway/src/docs/
+
+# Copy DB migrations (for running migrations at startup if needed)
+COPY db/ ./db/
+
+EXPOSE 3000
+USER node
+
+CMD ["node", "dist-unified/server-unified.js"]

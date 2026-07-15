@@ -43,8 +43,8 @@ function shouldFilterSensitiveData(roles: string[]): boolean {
 }
 
 /** Strips sensitive fields from a player object. */
-function stripSensitivePlayerFields(player: Record<string, unknown>): Record<string, unknown> {
-  const filtered = { ...player };
+function stripSensitivePlayerFields(player: unknown): Record<string, unknown> {
+  const filtered = { ...(player as Record<string, unknown>) };
   for (const field of SENSITIVE_FIELDS) {
     delete filtered[field];
   }

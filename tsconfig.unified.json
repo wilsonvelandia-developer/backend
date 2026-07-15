@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist-unified",
+    "composite": false,
+    "paths": {
+      "@tournament/shared": ["./shared/src/index.ts"]
+    }
+  },
+  "include": [
+    "server-unified.ts",
+    "shared/src/**/*.ts",
+    "services/gateway/src/**/*.ts",
+    "services/sports/src/**/*.ts",
+    "services/tournaments/src/**/*.ts",
+    "services/teams/src/**/*.ts",
+    "services/matches/src/**/*.ts",
+    "services/standings/src/**/*.ts",
+    "services/venues/src/**/*.ts",
+    "services/announcements/src/**/*.ts",
+    "services/payments/src/**/*.ts",
+    "services/gallery/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "dist-unified", "**/dist/**", "**/*.test.ts", "**/*.spec.ts"]
+}
