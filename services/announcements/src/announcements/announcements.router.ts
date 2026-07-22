@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { ValidationError } from '@tournament/shared';
+import { ValidationError, sanitizeHtml } from '@tournament/shared';
 import { AnnouncementsService } from './announcements.service.js';
 import { createAnnouncementSchema, updateAnnouncementSchema, announcementIdSchema, announcementQuerySchema } from './announcements.schema.js';
 
@@ -49,6 +49,8 @@ export function buildAnnouncementsRouter(service: AnnouncementsService): Router 
   router.post('/', requireRole('admin', 'organizer'), async (req: Request, res: Response, next: NextFunction) => {
     try {
       const dto = createAnnouncementSchema.parse(req.body);
+      // Sanitize content to allow only safe inline formatting tags
+      if (dto.content) dto.content = sanitizeHtml(dto.content);
       const authorId = req.headers['x-user-id'] as string;
       if (!authorId) return next(new ValidationError('Missing x-user-id header'));
       const announcement = await service.create(dto, authorId);
@@ -64,6 +66,8 @@ export function buildAnnouncementsRouter(service: AnnouncementsService): Router 
     try {
       const { id } = announcementIdSchema.parse(req.params);
       const dto = updateAnnouncementSchema.parse(req.body);
+      // Sanitize content on update as well
+      if (dto.content) dto.content = sanitizeHtml(dto.content);
       const announcement = await service.update(id, dto);
       res.json({ data: announcement });
     } catch (err) {

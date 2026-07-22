@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { ValidationError } from '@tournament/shared';
+import { ValidationError, AuditService } from '@tournament/shared';
 import { TeamsService } from './teams.service.js';
 import {
   createTeamSchema, updateTeamSchema, teamIdSchema,
@@ -68,7 +68,7 @@ function stripSensitivePlayerFields(player: unknown): Record<string, unknown> {
  *   PUT    /teams/:id/players/:playerId  → update player
  *   DELETE /teams/:id/players/:playerId  → delete player
  */
-export function buildTeamsRouter(service: TeamsService): Router {
+export function buildTeamsRouter(service: TeamsService, audit?: AuditService): Router {
   const router = Router();
 
   function parseZodError(err: ZodError): Record<string, string> {
@@ -93,8 +93,13 @@ export function buildTeamsRouter(service: TeamsService): Router {
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listTeamsSchema.parse(req.query);
-      const teams = await service.getAll(filters);
-      res.json({ data: teams });
+      const result  = await service.getAll(filters);
+      res.json({
+        data:     result.data,
+        total:    result.total,
+        page:     result.page,
+        pageSize: result.pageSize,
+      });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid query parameters', parseZodError(err)));
       next(err);
@@ -116,6 +121,8 @@ export function buildTeamsRouter(service: TeamsService): Router {
     try {
       const dto = createTeamSchema.parse(req.body);
       const team = await service.create(dto);
+      const userId = req.headers['x-user-id'] as string | undefined;
+      audit?.log({ tableName: 'teams', recordId: team.id, action: 'INSERT', performedBy: userId ?? null, newData: team as unknown as Record<string, unknown> });
       res.status(201).json({ data: team });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid team data', parseZodError(err)));
@@ -128,6 +135,8 @@ export function buildTeamsRouter(service: TeamsService): Router {
       const { id } = teamIdSchema.parse(req.params);
       const dto = updateTeamSchema.parse(req.body);
       const team = await service.update(id, dto);
+      const userId = req.headers['x-user-id'] as string | undefined;
+      audit?.log({ tableName: 'teams', recordId: id, action: 'UPDATE', performedBy: userId ?? null, newData: team as unknown as Record<string, unknown> });
       res.json({ data: team });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid team data', parseZodError(err)));
@@ -139,6 +148,8 @@ export function buildTeamsRouter(service: TeamsService): Router {
     try {
       const { id } = teamIdSchema.parse(req.params);
       await service.delete(id);
+      const userId = req.headers['x-user-id'] as string | undefined;
+      audit?.log({ tableName: 'teams', recordId: id, action: 'DELETE', performedBy: userId ?? null });
       res.status(204).send();
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid team id', parseZodError(err)));
@@ -178,6 +189,18 @@ export function buildTeamsRouter(service: TeamsService): Router {
         : player;
 
       res.json({ data: filtered });
+    } catch (err) {
+      if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
+      next(err);
+    }
+  });
+
+  // GET /teams/:id/players/:playerId/stats — aggregated player statistics
+  router.get('/:id/players/:playerId/stats', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { playerId } = playerParamsSchema.parse(req.params);
+      const stats = await service.getPlayerStats(playerId);
+      res.json({ data: stats });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid parameters', parseZodError(err)));
       next(err);

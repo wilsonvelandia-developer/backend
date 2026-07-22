@@ -96,6 +96,27 @@ export function createSocketServer(httpServer: HttpServer): Server {
       socket.leave(`match:${data.matchId}`);
     });
 
+    // ── Tournament: join tournament room for standings/results updates ───────
+    socket.on('tournament:join', (data: { tournamentId: string }) => {
+      if (!data.tournamentId) return;
+      socket.join(`tournament:${data.tournamentId}`);
+    });
+
+    socket.on('tournament:leave', (data: { tournamentId: string }) => {
+      if (!data.tournamentId) return;
+      socket.leave(`tournament:${data.tournamentId}`);
+    });
+
+    // ── Broadcast: standings updated (emitted by referee when match ends) ───
+    socket.on('standings:updated', (data: { tournamentId: string }) => {
+      if (!data.tournamentId) return;
+      // Broadcast to all in the tournament room (including sender)
+      io.to(`tournament:${data.tournamentId}`).emit('standings:refresh', {
+        tournamentId: data.tournamentId,
+        timestamp: new Date().toISOString(),
+      });
+    });
+
     // ── Referee: join and lock match ────────────────────────────────────────
     socket.on('referee:join', (data: { matchId: string }, callback?: (res: { success: boolean; message?: string }) => void) => {
       if (!data.matchId) return;

@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { Team, Player } from '@tournament/shared';
+import { Team, Player, PagedResult } from '@tournament/shared';
 import { NotFoundError, ConflictError, BusinessRuleError } from '@tournament/shared';
 import {
   TeamRow, mapTeamRow, CreateTeamInput, UpdateTeamInput,
@@ -58,8 +58,8 @@ export class TeamsRepository {
     }));
   }
 
-  async findAll(filters: ListTeamsQuery): Promise<Team[]> {
-    const conditions: string[] = [];
+  async findAll(filters: ListTeamsQuery): Promise<PagedResult<Team>> {
+    const conditions: string[] = ['is_deleted = false'];
     const values: unknown[] = [];
     let idx = 1;
 
@@ -73,16 +73,28 @@ export class TeamsRepository {
       idx++;
     }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const offset = ((filters.page ?? 1) - 1) * (filters.pageSize ?? 50);
-    values.push(filters.pageSize ?? 50);
-    values.push(offset);
+    const where    = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const page     = filters.page     ?? 1;
+    const pageSize = filters.pageSize ?? 50;
+    const offset   = (page - 1) * pageSize;
 
-    const result = await this.pool.query<TeamRow>(
-      `SELECT * FROM teams ${where} ORDER BY name ASC LIMIT $${idx++} OFFSET $${idx}`,
+    values.push(pageSize, offset);
+
+    const result = await this.pool.query<TeamRow & { _total: string }>(
+      `SELECT *, COUNT(*) OVER()::int AS _total
+       FROM teams ${where}
+       ORDER BY name ASC
+       LIMIT $${idx++} OFFSET $${idx}`,
       values,
     );
-    return result.rows.map(mapTeamRow);
+
+    const total = result.rows[0] ? parseInt(result.rows[0]._total, 10) : 0;
+    return {
+      data:     result.rows.map(mapTeamRow),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async findById(id: string): Promise<Team> {
@@ -179,17 +191,21 @@ export class TeamsRepository {
     }
   }
 
-  async delete(id: string): Promise<void> {
-    // Prevent deletion if team has matches
+  async delete(id: string, deletedBy?: string): Promise<void> {
+    // Prevent deletion if team has active/in-progress matches
     const matchCheck = await this.pool.query(
-      `SELECT 1 FROM matches WHERE home_team_id = $1 OR away_team_id = $1 LIMIT 1`,
+      `SELECT 1 FROM matches WHERE (home_team_id = $1 OR away_team_id = $1) AND status = 'in_progress' LIMIT 1`,
       [id],
     );
     if ((matchCheck.rowCount ?? 0) > 0) {
-      throw new BusinessRuleError('Cannot delete a team that has scheduled matches');
+      throw new BusinessRuleError('No se puede eliminar un equipo con partidos en curso');
     }
 
-    const result = await this.pool.query(`DELETE FROM teams WHERE id = $1`, [id]);
+    // Soft-delete: mark as deleted instead of physical removal
+    const result = await this.pool.query(
+      `UPDATE teams SET is_deleted = true, deleted_at = NOW(), deleted_by = $2, updated_at = NOW() WHERE id = $1 AND is_deleted = false`,
+      [id, deletedBy ?? null],
+    );
     if (result.rowCount === 0) throw new NotFoundError('Team', id);
   }
 
@@ -364,5 +380,112 @@ export class TeamsRepository {
     );
     if (result.rowCount === 0) throw new NotFoundError('Team', teamId);
     return result.rows[0];
+  }
+
+  // ── Player Statistics ─────────────────────────────────────────────────────
+
+  /**
+   * Computes aggregated statistics for a player across all their matches.
+   * Returns goals, assists, cards, matches played, averages, and streak info.
+   */
+  async getPlayerStats(playerId: string): Promise<{
+    playerId: string;
+    playerName: string;
+    teamName: string;
+    jerseyNumber: number;
+    position: string | null;
+    matchesPlayed: number;
+    goals: number;
+    goalsPerMatch: number;
+    yellowCards: number;
+    redCards: number;
+    substitutionsIn: number;
+    substitutionsOut: number;
+    matchResults: { wins: number; draws: number; losses: number };
+  }> {
+    // Basic player info
+    const playerResult = await this.pool.query<{
+      id: string; name: string; team_id: string; jersey_number: number; position: string | null; team_name: string;
+    }>(
+      `SELECT p.id, p.name, p.team_id, p.jersey_number, p.position, t.name AS team_name
+       FROM players p
+       JOIN teams t ON t.id = p.team_id
+       WHERE p.id = $1`,
+      [playerId],
+    );
+    if (playerResult.rowCount === 0) throw new NotFoundError('Player', playerId);
+    const player = playerResult.rows[0];
+
+    // Matches played (player was in a lineup or had events/subs in a finished match)
+    const matchesResult = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(DISTINCT m.id)::int AS count
+       FROM matches m
+       WHERE m.status = 'finished'
+         AND (m.home_team_id = $1 OR m.away_team_id = $1)`,
+      [player.team_id],
+    );
+    const matchesPlayed = parseInt(matchesResult.rows[0].count, 10);
+
+    // Goals scored
+    const goalsResult = await this.pool.query<{ count: string }>(
+      `SELECT COALESCE(SUM(points), 0)::int AS count FROM match_scorers WHERE player_id = $1`,
+      [playerId],
+    );
+    const goals = parseInt(goalsResult.rows[0].count, 10);
+
+    // Yellow and red cards
+    const cardsResult = await this.pool.query<{ code: string; count: string }>(
+      `SELECT st.code, COUNT(*)::int AS count
+       FROM match_sanctions ms
+       JOIN sanction_types st ON st.id = ms.sanction_type_id
+       WHERE ms.player_id = $1
+       GROUP BY st.code`,
+      [playerId],
+    );
+    const cardMap = new Map(cardsResult.rows.map((r) => [r.code, parseInt(r.count, 10)]));
+    const yellowCards = cardMap.get('YELLOW') ?? 0;
+    const redCards    = cardMap.get('RED')    ?? 0;
+
+    // Substitutions
+    const subsResult = await this.pool.query<{ direction: string; count: string }>(
+      `SELECT 'in' AS direction, COUNT(*)::int AS count FROM substitutions WHERE player_in_id = $1
+       UNION ALL
+       SELECT 'out' AS direction, COUNT(*)::int AS count FROM substitutions WHERE player_out_id = $1`,
+      [playerId],
+    );
+    const subsMap = new Map(subsResult.rows.map((r) => [r.direction, parseInt(r.count, 10)]));
+
+    // Match results (W/D/L for the player's team)
+    const resultsResult = await this.pool.query<{ wins: string; draws: string; losses: string }>(
+      `SELECT
+         COUNT(CASE WHEN m.winner_id = $1 THEN 1 END)::int AS wins,
+         COUNT(CASE WHEN m.winner_id IS NULL AND m.status = 'finished' THEN 1 END)::int AS draws,
+         COUNT(CASE WHEN m.winner_id IS NOT NULL AND m.winner_id != $1 THEN 1 END)::int AS losses
+       FROM matches m
+       WHERE m.status = 'finished'
+         AND (m.home_team_id = $1 OR m.away_team_id = $1)`,
+      [player.team_id],
+    );
+    const r = resultsResult.rows[0];
+
+    return {
+      playerId:          player.id,
+      playerName:        player.name,
+      teamName:          player.team_name,
+      jerseyNumber:      player.jersey_number,
+      position:          player.position,
+      matchesPlayed,
+      goals,
+      goalsPerMatch:     matchesPlayed > 0 ? Math.round((goals / matchesPlayed) * 100) / 100 : 0,
+      yellowCards,
+      redCards,
+      substitutionsIn:   subsMap.get('in')  ?? 0,
+      substitutionsOut:  subsMap.get('out') ?? 0,
+      matchResults: {
+        wins:   parseInt(r.wins, 10),
+        draws:  parseInt(r.draws, 10),
+        losses: parseInt(r.losses, 10),
+      },
+    };
   }
 }

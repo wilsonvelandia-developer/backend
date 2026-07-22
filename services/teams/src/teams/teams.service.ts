@@ -1,4 +1,4 @@
-import { Team, Player } from '@tournament/shared';
+import { Team, Player, PagedResult } from '@tournament/shared';
 import { TeamsRepository } from './teams.repository.js';
 import {
   CreateTeamDto, UpdateTeamDto,
@@ -14,7 +14,7 @@ export class TeamsService {
 
   // ── Teams ─────────────────────────────────────────────────────────────────
 
-  async getAll(filters: ListTeamsQuery): Promise<Team[]> {
+  async getAll(filters: ListTeamsQuery): Promise<PagedResult<Team>> {
     return this.repo.findAll(filters);
   }
 
@@ -94,5 +94,11 @@ export class TeamsService {
 
   async deletePlayer(teamId: string, playerId: string): Promise<void> {
     return this.repo.deletePlayer(teamId, playerId);
+  }
+
+  // ── Player Statistics ─────────────────────────────────────────────────────
+
+  async getPlayerStats(playerId: string): Promise<unknown> {
+    return this.repo.getPlayerStats(playerId);
   }
 }

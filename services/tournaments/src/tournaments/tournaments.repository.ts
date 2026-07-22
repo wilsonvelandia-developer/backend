@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { Tournament, Phase } from '@tournament/shared';
+import { Tournament, Phase, PagedResult } from '@tournament/shared';
 import { NotFoundError, ConflictError, BusinessRuleError } from '@tournament/shared';
 import {
   TournamentRow, mapTournamentRow, CreateTournamentInput, UpdateTournamentInput,
@@ -16,8 +16,8 @@ export class TournamentsRepository {
 
   // ── Tournaments ───────────────────────────────────────────────────────────
 
-  async findAll(filters: ListTournamentsQuery): Promise<Tournament[]> {
-    const conditions: string[] = [];
+  async findAll(filters: ListTournamentsQuery): Promise<PagedResult<Tournament>> {
+    const conditions: string[] = ['is_deleted = false'];
     const values: unknown[] = [];
     let idx = 1;
 
@@ -35,11 +35,28 @@ export class TournamentsRepository {
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await this.pool.query<TournamentRow>(
-      `SELECT * FROM tournaments ${where} ORDER BY created_at DESC`,
+    const page     = filters.page     ?? 1;
+    const pageSize = filters.pageSize ?? 20;
+    const offset   = (page - 1) * pageSize;
+
+    values.push(pageSize, offset);
+
+    // COUNT(*) OVER() gives total matching rows in one query (no separate COUNT needed)
+    const result = await this.pool.query<TournamentRow & { _total: string }>(
+      `SELECT *, COUNT(*) OVER()::int AS _total
+       FROM tournaments ${where}
+       ORDER BY created_at DESC
+       LIMIT $${idx++} OFFSET $${idx}`,
       values,
     );
-    return result.rows.map(mapTournamentRow);
+
+    const total = result.rows[0] ? parseInt(result.rows[0]._total, 10) : 0;
+    return {
+      data:     result.rows.map(mapTournamentRow),
+      total,
+      page,
+      pageSize,
+    };
   }
 
   async findById(id: string): Promise<Tournament> {
@@ -160,7 +177,7 @@ export class TournamentsRepository {
     return mapTournamentRow(result.rows[0]);
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, deletedBy?: string): Promise<void> {
     // Prevent deletion if tournament has active matches (checked via phases)
     const activeCheck = await this.pool.query(
       `SELECT 1 FROM phases p
@@ -173,9 +190,10 @@ export class TournamentsRepository {
       throw new BusinessRuleError('Cannot delete a tournament with in-progress matches');
     }
 
+    // Soft-delete: mark as deleted instead of physical removal
     const result = await this.pool.query(
-      `DELETE FROM tournaments WHERE id = $1`,
-      [id],
+      `UPDATE tournaments SET is_deleted = true, deleted_at = NOW(), deleted_by = $2, updated_at = NOW() WHERE id = $1 AND is_deleted = false`,
+      [id, deletedBy ?? null],
     );
     if (result.rowCount === 0) throw new NotFoundError('Tournament', id);
   }
@@ -256,14 +274,22 @@ export class TournamentsRepository {
   }
 
   async deletePhase(tournamentId: string, phaseId: string): Promise<void> {
-    // Cannot delete a phase that has matches
-    const matchCheck = await this.pool.query(
-      `SELECT 1 FROM matches WHERE phase_id = $1 LIMIT 1`,
+    // Cannot delete a phase that has active or finished matches
+    const activeMatchCheck = await this.pool.query(
+      `SELECT 1 FROM matches WHERE phase_id = $1 AND status IN ('in_progress', 'finished') LIMIT 1`,
       [phaseId],
     );
-    if ((matchCheck.rowCount ?? 0) > 0) {
-      throw new BusinessRuleError('Cannot delete a phase that has scheduled matches');
+    if ((activeMatchCheck.rowCount ?? 0) > 0) {
+      throw new BusinessRuleError(
+        'No se puede eliminar una fase que tiene partidos en curso o finalizados. Elimina o revierte los partidos primero.',
+      );
     }
+
+    // Delete any scheduled (unplayed) matches first — safe to remove
+    await this.pool.query(
+      `DELETE FROM matches WHERE phase_id = $1 AND status = 'scheduled'`,
+      [phaseId],
+    );
 
     const result = await this.pool.query(
       `DELETE FROM phases WHERE id = $1 AND tournament_id = $2`,

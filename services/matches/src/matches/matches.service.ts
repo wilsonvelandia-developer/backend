@@ -1,4 +1,4 @@
-import { Match, Substitution, VolleyballRotationSlot } from '@tournament/shared';
+import { Match, Substitution, VolleyballRotationSlot, PagedResult } from '@tournament/shared';
 import { MatchesRepository } from './matches.repository.js';
 import { NotificationsHelper } from './notifications.helper.js';
 import {
@@ -24,7 +24,7 @@ export class MatchesService {
     this.notifications = notifications ?? null;
   }
 
-  async getAll(filters: ListMatchesQuery): Promise<Match[]> {
+  async getAll(filters: ListMatchesQuery): Promise<PagedResult<Match>> {
     return this.repo.findAll(filters);
   }
 

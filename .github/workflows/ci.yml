@@ -69,3 +69,6 @@ jobs:
 
       - name: Test matches
         run: npm run test --workspace=services/matches
+
+      - name: Test gateway (auth schemas + brute-force protection)
+        run: npm run test --workspace=services/gateway

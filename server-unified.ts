@@ -38,17 +38,12 @@ import { config } from './services/gateway/src/config.js';
 import { correlationMiddleware } from './services/gateway/src/middleware/correlation.middleware.js';
 import { rateLimitMiddleware } from './services/gateway/src/middleware/rate-limit.middleware.js';
 import { authMiddleware } from './services/gateway/src/middleware/auth.middleware.js';
-import {
-  blockReadOnlyWrites,
-  authorizeTournamentWrite,
-  authorizeTeamWrite,
-  authorizeMatchWrite,
-  injectOwnershipContext,
-} from './services/gateway/src/middleware/authorization.middleware.js';
+import { buildAuthorizationMiddleware } from './services/gateway/src/middleware/authorization.middleware.js';
+import { writeLoggerMiddleware } from './services/gateway/src/middleware/write-logger.middleware.js';
 import { errorMiddleware } from './services/gateway/src/middleware/error.middleware.js';
 
 // Gateway direct routes (auth, users, notifications)
-import { authRouter } from './services/gateway/src/routes/auth.routes.js';
+import { buildAuthRouter } from './services/gateway/src/routes/auth.routes.js';
 import { usersRouter } from './services/gateway/src/routes/users.routes.js';
 import { notificationsRouter } from './services/gateway/src/routes/notifications.routes.js';
 
@@ -99,13 +94,29 @@ const pool = new Pool({
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
+  // Query safety: prevent runaway queries from holding connections
+  statement_timeout: 30000,                    // 30s max per query
+  idle_in_transaction_session_timeout: 60000,  // 60s max idle in transaction
 });
 
 // ── Build all service routers ────────────────────────────────────────────────
+const authRouter = buildAuthRouter(pool);
+const {
+  blockReadOnlyWrites,
+  authorizeTournamentWrite,
+  authorizeTeamWrite,
+  authorizeMatchWrite,
+  injectOwnershipContext,
+} = buildAuthorizationMiddleware(pool);
+
+// Shared audit service for tracking write operations
+import { AuditService } from './shared/src/audit/audit.service.js';
+const auditService = new AuditService(pool);
+
 const sportsRouter = buildSportsRouter(new SportsService(new SportsRepository(pool)));
-const tournamentsRouter = buildTournamentsRouter(new TournamentsService(new TournamentsRepository(pool)));
-const teamsRouter = buildTeamsRouter(new TeamsService(new TeamsRepository(pool)));
-const matchesRouter = buildMatchesRouter(new MatchesService(new MatchesRepository(pool), new NotificationsHelper(pool)));
+const tournamentsRouter = buildTournamentsRouter(new TournamentsService(new TournamentsRepository(pool)), auditService);
+const teamsRouter = buildTeamsRouter(new TeamsService(new TeamsRepository(pool)), auditService);
+const matchesRouter = buildMatchesRouter(new MatchesService(new MatchesRepository(pool), new NotificationsHelper(pool)), auditService);
 const standingsRouter = buildStandingsRouter(new StandingsService(new StandingsRepository(pool)));
 const venuesRouter = buildVenuesRouter(new VenuesService(new VenuesRepository(pool)));
 const announcementsRouter = buildAnnouncementsRouter(new AnnouncementsService(new AnnouncementsRepository(pool)));
@@ -116,7 +127,33 @@ const galleryRouter = buildGalleryRouter(new GalleryService(new GalleryRepositor
 const app = express();
 
 // Security
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],  // Angular requires inline styles
+      imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
+      fontSrc: ["'self'", 'https:', 'data:'],
+      connectSrc: [
+        "'self'",
+        // WebSocket connections
+        'ws://localhost:*',
+        'wss://localhost:*',
+        // Firebase Cloud Messaging
+        'https://fcm.googleapis.com',
+        'https://firebaseinstallations.googleapis.com',
+        ...(process.env['FRONTEND_URL'] ? [process.env['FRONTEND_URL']] : []),
+      ],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      upgradeInsecureRequests: config.nodeEnv === 'production' ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Required for some image loading patterns
+}));
 
 // CORS
 const allowedOrigins = config.nodeEnv === 'production'
@@ -133,6 +170,10 @@ app.use(cors({
 app.use(cookieParser());
 app.use(correlationMiddleware);
 
+import { apiVersionMiddleware } from './services/gateway/src/middleware/api-version.middleware.js';
+import { contentTypeMiddleware } from './services/gateway/src/middleware/content-type.middleware.js';
+app.use(apiVersionMiddleware);
+
 app.use(pinoHttp({
   logger,
   customProps: (_req, res) => ({ correlationId: res.locals['correlationId'] }),
@@ -142,15 +183,67 @@ app.use(pinoHttp({
 
 app.use(rateLimitMiddleware);
 app.use(express.json({ limit: '1mb' }));
+app.use(contentTypeMiddleware);
+app.use(writeLoggerMiddleware);
 
 // ── Health ───────────────────────────────────────────────────────────────────
-app.get('/health', async (_req: Request, res: Response) => {
+const startTime = Date.now();
+
+// Liveness — lightweight check (always responds if process is alive)
+app.get('/health/live', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Readiness — full check (DB connection, pool health)
+app.get('/health/ready', async (_req: Request, res: Response) => {
   try {
     await pool.query('SELECT 1');
-    res.json({ data: { status: 'ok', mode: 'unified', timestamp: new Date().toISOString() }, success: true, message: '' });
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
   } catch {
-    res.status(503).json({ data: { status: 'error' }, success: false, message: 'Database unavailable' });
+    res.status(503).json({ status: 'error', message: 'Database unavailable' });
   }
+});
+
+// Full health — detailed status for monitoring dashboards
+app.get('/health', async (_req: Request, res: Response) => {
+  const mem = process.memoryUsage();
+  const poolStatus = {
+    totalConnections: pool.totalCount,
+    idleConnections:  pool.idleCount,
+    waitingRequests:  pool.waitingCount,
+  };
+
+  let dbHealthy = false;
+  try {
+    await pool.query('SELECT 1');
+    dbHealthy = true;
+  } catch { /* db unreachable */ }
+
+  const status = dbHealthy ? 'ok' : 'degraded';
+  const httpStatus = dbHealthy ? 200 : 503;
+
+  res.status(httpStatus).json({
+    data: {
+      status,
+      mode: 'unified',
+      version: '1.0.0',
+      uptime: Math.floor((Date.now() - startTime) / 1000),
+      timestamp: new Date().toISOString(),
+      database: {
+        connected: dbHealthy,
+        pool: poolStatus,
+      },
+      memory: {
+        rssBytes: mem.rss,
+        heapUsedBytes: mem.heapUsed,
+        heapTotalBytes: mem.heapTotal,
+        rssMB: Math.round(mem.rss / 1024 / 1024),
+        heapUsedMB: Math.round(mem.heapUsed / 1024 / 1024),
+      },
+    },
+    success: dbHealthy,
+    message: dbHealthy ? '' : 'Database unavailable',
+  });
 });
 
 // ── Auth (public) ────────────────────────────────────────────────────────────
@@ -195,17 +288,36 @@ httpServer.listen(PORT, () => {
   logger.info({ port: PORT, mode: 'unified', env: config.nodeEnv }, '🚀 OlimpicApp unified server running');
 });
 
-// Graceful shutdown
-process.on('SIGTERM', async () => {
-  logger.info('SIGTERM received — shutting down');
-  httpServer.close();
-  await pool.end();
-  process.exit(0);
-});
+// Graceful shutdown with connection drain
+const SHUTDOWN_TIMEOUT_MS = 15000; // 15 seconds max for graceful drain
 
-process.on('SIGINT', async () => {
-  logger.info('SIGINT received — shutting down');
-  httpServer.close();
-  await pool.end();
+async function gracefulShutdown(signal: string): Promise<void> {
+  logger.info({ signal }, `${signal} received — starting graceful shutdown`);
+
+  // 1. Stop accepting new connections
+  httpServer.close(() => {
+    logger.info('HTTP server closed — no new connections accepted');
+  });
+
+  // 2. Set a hard timeout in case drain takes too long
+  const forceExit = setTimeout(() => {
+    logger.warn('Shutdown timeout reached — forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  forceExit.unref();
+
+  // 3. Wait for existing connections to drain (Express handles this via server.close)
+  // 4. Close database pool (waits for active queries to finish)
+  try {
+    await pool.end();
+    logger.info('Database pool closed');
+  } catch (err) {
+    logger.error({ err }, 'Error closing database pool');
+  }
+
+  logger.info('Graceful shutdown complete');
   process.exit(0);
-});
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

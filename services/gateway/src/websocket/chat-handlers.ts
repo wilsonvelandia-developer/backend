@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { Server } from 'socket.io';
+import { stripHtml } from '@tournament/shared';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
 import type { AuthenticatedSocket } from './socket-server.js';
@@ -67,7 +68,8 @@ export function registerChatHandlers(io: Server, socket: AuthenticatedSocket): v
   socket.on('chat:sendMessage', async (data: { roomId: string; content: string }) => {
     if (!data.roomId || !data.content?.trim()) return;
     try {
-      const content = data.content.trim().slice(0, 1000);
+      // Sanitize HTML to prevent stored XSS
+      const content = stripHtml(data.content.trim()).slice(0, 1000);
 
       // Insert message
       const result = await pool.query<{ id: string; created_at: Date }>(

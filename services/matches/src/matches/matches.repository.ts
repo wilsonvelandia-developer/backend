@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { Match, Substitution, VolleyballRotationSlot } from '@tournament/shared';
+import { Match, Substitution, VolleyballRotationSlot, PagedResult } from '@tournament/shared';
 import { NotFoundError, BusinessRuleError } from '@tournament/shared';
 import {
   MatchRow, mapMatchRow,
@@ -86,7 +86,7 @@ export class MatchesRepository {
 
   // ── Matches CRUD ──────────────────────────────────────────────────────────
 
-  async findAll(filters: ListMatchesQuery): Promise<Match[]> {
+  async findAll(filters: ListMatchesQuery): Promise<PagedResult<Match>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -95,24 +95,35 @@ export class MatchesRepository {
     if (filters.teamId)  { conditions.push(`(m.home_team_id = $${idx} OR m.away_team_id = $${idx++})`); values.push(filters.teamId); }
     if (filters.status)  { conditions.push(`m.status = $${idx++}`);                                    values.push(filters.status); }
 
-    const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await this.pool.query<MatchRow & { home_team_name: string; away_team_name: string; home_score: number; away_score: number }>(
+    const where    = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const page     = filters.page     ?? 1;
+    const pageSize = filters.pageSize ?? 50;
+    const offset   = (page - 1) * pageSize;
+
+    values.push(pageSize, offset);
+
+    const result = await this.pool.query<MatchRow & {
+      home_team_name: string; away_team_name: string;
+      home_score: number; away_score: number; _total: string;
+    }>(
       `SELECT m.*,
               ht.name AS home_team_name,
               at.name AS away_team_name,
               COALESCE((SELECT SUM(mp.home_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS home_score,
-              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS away_score
+              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS away_score,
+              COUNT(*) OVER()::int AS _total
        FROM matches m
        JOIN teams ht ON ht.id = m.home_team_id
        JOIN teams at ON at.id = m.away_team_id
        ${where}
-       ORDER BY m.scheduled_at ASC NULLS LAST, m.created_at ASC`,
+       ORDER BY m.scheduled_at ASC NULLS LAST, m.created_at ASC
+       LIMIT $${idx++} OFFSET $${idx}`,
       values,
     );
 
-    // Load period details for finished/in_progress matches (for volleyball set scores)
-    const matchIds = result.rows.filter((r) => r.status !== 'scheduled').map((r) => r.id);
-    let periodsMap = new Map<string, Array<{ periodNumber: number; homeScore: number; awayScore: number; status: string }>>();
+    const total     = result.rows[0] ? parseInt(result.rows[0]._total, 10) : 0;
+    const matchIds  = result.rows.filter((r) => r.status !== 'scheduled').map((r) => r.id);
+    let periodsMap  = new Map<string, Array<{ periodNumber: number; homeScore: number; awayScore: number; status: string }>>();
 
     if (matchIds.length > 0) {
       const periodsResult = await this.pool.query<{
@@ -135,16 +146,14 @@ export class MatchesRepository {
       }
     }
 
-    return result.rows.map((row) => {
+    const data = result.rows.map((row) => {
       const periods = periodsMap.get(row.id);
-      // For set-based sports: compute sets won as main score
       let homeSetsWon = 0;
       let awaySetsWon = 0;
       if (periods && periods.length > 2) {
         homeSetsWon = periods.filter((p) => p.status === 'finished' && p.homeScore > p.awayScore).length;
         awaySetsWon = periods.filter((p) => p.status === 'finished' && p.awayScore > p.homeScore).length;
       }
-
       return {
         ...mapMatchRow(row),
         homeTeamName: row.home_team_name,
@@ -156,6 +165,8 @@ export class MatchesRepository {
         periods: periods ?? [],
       };
     });
+
+    return { data, total, page, pageSize };
   }
 
   async findById(id: string): Promise<MatchDetail> {
@@ -368,44 +379,55 @@ export class MatchesRepository {
       throw new BusinessRuleError(`Cannot finish a match with status '${match.status}'`);
     }
 
-    // Force-finish all periods first
-    await this.pool.query(
-      `UPDATE match_periods SET status = 'finished' WHERE match_id = $1 AND status != 'finished'`,
-      [id],
-    );
+    // Use explicit transaction to ensure atomicity:
+    // if any step fails, match remains in_progress
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Re-read periods after forcing finish
-    const updatedPeriods = await this.pool.query<MatchPeriodRow>(
-      `SELECT * FROM match_periods WHERE match_id = $1 ORDER BY period_number ASC`,
-      [id],
-    );
+      // Force-finish all periods
+      await client.query(
+        `UPDATE match_periods SET status = 'finished' WHERE match_id = $1 AND status != 'finished'`,
+        [id],
+      );
 
-    // Determine winner from actual scores
-    let winnerId: string | null = null;
+      // Re-read periods after forcing finish
+      const updatedPeriods = await client.query<MatchPeriodRow>(
+        `SELECT * FROM match_periods WHERE match_id = $1 ORDER BY period_number ASC`,
+        [id],
+      );
 
-    if (rules.hasSets && rules.setsToWin !== null) {
-      // Set-based: count sets won
-      let homeSets = 0;
-      let awaySets = 0;
-      for (const p of updatedPeriods.rows) {
-        if (p.home_score > p.away_score) homeSets++;
-        else if (p.away_score > p.home_score) awaySets++;
+      // Determine winner from actual scores
+      let winnerId: string | null = null;
+
+      if (rules.hasSets && rules.setsToWin !== null) {
+        let homeSets = 0;
+        let awaySets = 0;
+        for (const p of updatedPeriods.rows) {
+          if (p.home_score > p.away_score) homeSets++;
+          else if (p.away_score > p.home_score) awaySets++;
+        }
+        if (homeSets > awaySets) winnerId = match.homeTeamId;
+        else if (awaySets > homeSets) winnerId = match.awayTeamId;
+      } else {
+        const homeTotal = updatedPeriods.rows.reduce((s, p) => s + p.home_score, 0);
+        const awayTotal = updatedPeriods.rows.reduce((s, p) => s + p.away_score, 0);
+        if (homeTotal > awayTotal) winnerId = match.homeTeamId;
+        else if (awayTotal > homeTotal) winnerId = match.awayTeamId;
       }
-      if (homeSets > awaySets) winnerId = match.homeTeamId;
-      else if (awaySets > homeSets) winnerId = match.awayTeamId;
-    } else {
-      // Period-based: sum all period scores
-      const homeTotal = updatedPeriods.rows.reduce((s, p) => s + p.home_score, 0);
-      const awayTotal = updatedPeriods.rows.reduce((s, p) => s + p.away_score, 0);
-      if (homeTotal > awayTotal) winnerId = match.homeTeamId;
-      else if (awayTotal > homeTotal) winnerId = match.awayTeamId;
-      // else: draw → winnerId stays null
-    }
 
-    await this.pool.query(
-      `UPDATE matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2`,
-      [winnerId, id],
-    );
+      await client.query(
+        `UPDATE matches SET status = 'finished', winner_id = $1, updated_at = NOW() WHERE id = $2`,
+        [winnerId, id],
+      );
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
 
     return this.findById(id);
   }

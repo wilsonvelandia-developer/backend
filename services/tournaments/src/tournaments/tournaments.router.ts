@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { ValidationError } from '@tournament/shared';
+import { ValidationError, AuditService } from '@tournament/shared';
 import { TournamentsService } from './tournaments.service.js';
 import {
   createTournamentSchema, updateTournamentSchema, tournamentIdSchema,
@@ -25,7 +25,7 @@ import {
  *   PUT    /tournaments/:id/phases/:phaseId     → update phase
  *   DELETE /tournaments/:id/phases/:phaseId     → delete phase
  */
-export function buildTournamentsRouter(service: TournamentsService): Router {
+export function buildTournamentsRouter(service: TournamentsService, audit?: AuditService): Router {
   const router = Router();
 
   function parseZodError(err: ZodError): Record<string, string> {
@@ -37,8 +37,13 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listTournamentsSchema.parse(req.query);
-      const tournaments = await service.getAll(filters);
-      res.json({ data: tournaments });
+      const result  = await service.getAll(filters);
+      res.json({
+        data:     result.data,
+        total:    result.total,
+        page:     result.page,
+        pageSize: result.pageSize,
+      });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid query parameters', parseZodError(err)));
       next(err);
@@ -67,6 +72,8 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
         await service.registerStaff(tournament.id, userId, 'organizer');
       }
 
+      audit?.log({ tableName: 'tournaments', recordId: tournament.id, action: 'INSERT', performedBy: userId ?? null, newData: tournament as unknown as Record<string, unknown> });
+
       res.status(201).json({ data: tournament });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid tournament data', parseZodError(err)));
@@ -79,6 +86,10 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
       const { id } = tournamentIdSchema.parse(req.params);
       const dto = updateTournamentSchema.parse(req.body);
       const tournament = await service.update(id, dto);
+      const userId = req.headers['x-user-id'] as string | undefined;
+
+      audit?.log({ tableName: 'tournaments', recordId: id, action: 'UPDATE', performedBy: userId ?? null, newData: tournament as unknown as Record<string, unknown> });
+
       res.json({ data: tournament });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid tournament data', parseZodError(err)));
@@ -90,6 +101,10 @@ export function buildTournamentsRouter(service: TournamentsService): Router {
     try {
       const { id } = tournamentIdSchema.parse(req.params);
       await service.delete(id);
+      const userId = req.headers['x-user-id'] as string | undefined;
+
+      audit?.log({ tableName: 'tournaments', recordId: id, action: 'DELETE', performedBy: userId ?? null });
+
       res.status(204).send();
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid tournament id', parseZodError(err)));

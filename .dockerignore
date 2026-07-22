@@ -1,0 +1,39 @@
+# Build artifacts
+dist/
+dist-unified/
+**/dist/
+
+# Dependencies — re-installed in image
+node_modules/
+**/node_modules/
+
+# Dev environment
+.env
+.env.*
+.env.local
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# CI / VCS
+.git/
+.github/
+.kiro/
+
+# Logs and coverage
+*.log
+coverage/
+logs/
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+
+# DB tooling (not needed at runtime)
+db/
+
+# TS source maps (optional — remove if you want source maps in prod)
+**/*.map

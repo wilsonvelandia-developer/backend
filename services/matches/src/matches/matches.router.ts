@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
-import { ValidationError } from '@tournament/shared';
+import { ValidationError, AuditService } from '@tournament/shared';
 import { MatchesService } from './matches.service.js';
 import {
   createMatchSchema, matchIdSchema, listMatchesSchema,
@@ -34,7 +34,7 @@ import {
  *   POST   /matches/:id/substitutions            → record substitution
  *   GET    /matches/:id/substitutions            → list substitutions
  */
-export function buildMatchesRouter(service: MatchesService): Router {
+export function buildMatchesRouter(service: MatchesService, audit?: AuditService): Router {
   const router = Router();
 
   function parseZodError(err: ZodError): Record<string, string> {
@@ -107,8 +107,13 @@ export function buildMatchesRouter(service: MatchesService): Router {
   router.get('/', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const filters = listMatchesSchema.parse(req.query);
-      const matches = await service.getAll(filters);
-      res.json({ data: matches });
+      const result  = await service.getAll(filters);
+      res.json({
+        data:     result.data,
+        total:    result.total,
+        page:     result.page,
+        pageSize: result.pageSize,
+      });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid query parameters', parseZodError(err)));
       next(err);
@@ -130,6 +135,8 @@ export function buildMatchesRouter(service: MatchesService): Router {
     try {
       const dto = createMatchSchema.parse(req.body);
       const match = await service.create(dto);
+      const userId = req.headers['x-user-id'] as string | undefined;
+      audit?.log({ tableName: 'matches', recordId: match.id, action: 'INSERT', performedBy: userId ?? null, newData: match as unknown as Record<string, unknown> });
       res.status(201).json({ data: match });
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid match data', parseZodError(err)));
@@ -141,6 +148,8 @@ export function buildMatchesRouter(service: MatchesService): Router {
     try {
       const { id } = matchIdSchema.parse(req.params);
       await service.delete(id);
+      const userId = req.headers['x-user-id'] as string | undefined;
+      audit?.log({ tableName: 'matches', recordId: id, action: 'DELETE', performedBy: userId ?? null });
       res.status(204).send();
     } catch (err) {
       if (err instanceof ZodError) return next(new ValidationError('Invalid match id', parseZodError(err)));

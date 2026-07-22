@@ -1,4 +1,4 @@
-import { Tournament, Phase } from '@tournament/shared';
+import { Tournament, Phase, PagedResult } from '@tournament/shared';
 import { TournamentsRepository } from './tournaments.repository.js';
 import {
   CreateTournamentDto, UpdateTournamentDto,
@@ -14,7 +14,7 @@ export class TournamentsService {
 
   // ── Tournaments ───────────────────────────────────────────────────────────
 
-  async getAll(filters: ListTournamentsQuery): Promise<Tournament[]> {
+  async getAll(filters: ListTournamentsQuery): Promise<PagedResult<Tournament>> {
     return this.repo.findAll(filters);
   }
 

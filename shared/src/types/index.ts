@@ -12,6 +12,17 @@ export interface ApiResponse<T> {
   meta?: Record<string, unknown>;
 }
 
+/**
+ * Paginated list response returned by list endpoints.
+ * The `total` field enables clients to compute pages without fetching all records.
+ */
+export interface PagedResult<T> {
+  data:     T[];
+  total:    number;
+  page:     number;
+  pageSize: number;
+}
+
 export interface ApiError {
   code: string;
   message: string;
