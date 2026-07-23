@@ -252,7 +252,11 @@ export class TournamentsService {
     contactName: string;
     contactPhone: string;
     contactEmail?: string;
-    players: Array<{ name: string; jerseyNumber: number; position?: string }>;
+    players: Array<{ name: string; jerseyNumber: number; position?: string;
+      documentType?: string; documentNumber?: string; email?: string; phone?: string;
+      birthDate?: string; photoUrl?: string; documentFrontUrl?: string;
+      documentBackUrl?: string; epsFileUrl?: string;
+    }>;
   }): Promise<{ teamId: string; enrollmentId: string }> {
     return this.repo.enrollTeam(tournamentId, data);
   }

@@ -1247,7 +1247,11 @@ export class TournamentsRepository {
     contactName: string;
     contactPhone: string;
     contactEmail?: string;
-    players: Array<{ name: string; jerseyNumber: number; position?: string }>;
+    players: Array<{ name: string; jerseyNumber: number; position?: string;
+      documentType?: string; documentNumber?: string; email?: string; phone?: string;
+      birthDate?: string; photoUrl?: string; documentFrontUrl?: string;
+      documentBackUrl?: string; epsFileUrl?: string;
+    }>;
   }): Promise<{ teamId: string; enrollmentId: string }> {
     // Verify tournament exists and is accepting enrollments
     const tResult = await this.pool.query<TournamentRow>(
@@ -1279,12 +1283,65 @@ export class TournamentsRepository {
       );
       const teamId = teamResult.rows[0].id;
 
-      // Create players
+      // Create players with full enrollment data + auto-create user accounts
+      const bcrypt = await import('bcrypt');
+
       for (const player of data.players) {
+        let userId: string | null = null;
+
+        // Auto-create user account if document number is provided
+        if (player.documentNumber) {
+          // Check if user already exists by document
+          const existingUser = await client.query<{ id: string }>(
+            `SELECT id FROM users WHERE document_number = $1 LIMIT 1`,
+            [player.documentNumber],
+          );
+
+          if (existingUser.rowCount && existingUser.rowCount > 0) {
+            userId = existingUser.rows[0].id;
+          } else {
+            // Create new user — password = document number (must change on first login)
+            const passwordHash = await bcrypt.hash(player.documentNumber, 10);
+            const userEmail = player.email || `${player.documentNumber}@player.olimpicapp.local`;
+
+            const newUser = await client.query<{ id: string }>(
+              `INSERT INTO users (name, email, document_type, document_number, phone, birth_date,
+                                  photo_url, document_front_url, document_back_url, eps_file_url,
+                                  password_hash, must_change_password, is_active)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, true)
+               RETURNING id`,
+              [
+                player.name, userEmail,
+                player.documentType || 'CC', player.documentNumber,
+                player.phone || null, player.birthDate || null,
+                player.photoUrl || null, player.documentFrontUrl || null,
+                player.documentBackUrl || null, player.epsFileUrl || null,
+                passwordHash,
+              ],
+            );
+            userId = newUser.rows[0].id;
+
+            // Assign 'player' role
+            await client.query(
+              `INSERT INTO user_roles (user_id, role_id) VALUES ($1, 'player') ON CONFLICT DO NOTHING`,
+              [userId],
+            );
+          }
+        }
+
+        // Create player record with all fields
         await client.query(
-          `INSERT INTO players (team_id, name, jersey_number, position)
-           VALUES ($1, $2, $3, $4)`,
-          [teamId, player.name, player.jerseyNumber, player.position || null],
+          `INSERT INTO players (team_id, user_id, name, jersey_number, position,
+                                document_type, document_number, email, phone, birth_date,
+                                photo_url, document_front_url, document_back_url, eps_file_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+          [
+            teamId, userId, player.name, player.jerseyNumber, player.position || null,
+            player.documentType || null, player.documentNumber || null,
+            player.email || null, player.phone || null, player.birthDate || null,
+            player.photoUrl || null, player.documentFrontUrl || null,
+            player.documentBackUrl || null, player.epsFileUrl || null,
+          ],
         );
       }
 
