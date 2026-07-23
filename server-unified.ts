@@ -41,6 +41,7 @@ import { authMiddleware } from './services/gateway/src/middleware/auth.middlewar
 import { buildAuthorizationMiddleware } from './services/gateway/src/middleware/authorization.middleware.js';
 import { writeLoggerMiddleware } from './services/gateway/src/middleware/write-logger.middleware.js';
 import { planLimitsMiddleware } from './services/gateway/src/middleware/plan-limits.middleware.js';
+import { tournamentLifecycleMiddleware } from './services/gateway/src/middleware/tournament-lifecycle.middleware.js';
 import { errorMiddleware } from './services/gateway/src/middleware/error.middleware.js';
 
 // Gateway direct routes (auth, users, notifications)
@@ -256,15 +257,33 @@ app.use('/public/tournaments', tournamentsRouter);
 app.use('/public/teams', teamsRouter);
 app.use('/public/matches', matchesRouter);
 app.use('/public/standings', standingsRouter);
-app.use('/public/plans', usersRouter); // GET /public/plans/available — no auth needed
+
+// Public plans endpoint (no auth, no router — direct handler)
+app.get('/public/plans', async (_req: Request, res: Response) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, slug, name, price_cop AS "priceCop",
+              max_teams_per_tournament AS "maxTeamsPerTournament",
+              max_active_tournaments AS "maxActiveTournaments",
+              max_venues AS "maxVenues",
+              features, display_order AS "displayOrder"
+       FROM subscription_plans
+       WHERE is_active = TRUE
+       ORDER BY display_order`,
+    );
+    res.json({ data: result.rows, success: true, message: '' });
+  } catch {
+    res.json({ data: [], success: false, message: 'Error loading plans' });
+  }
+});
 
 // ── Protected routes (auth required) ─────────────────────────────────────────
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/notifications', authMiddleware, notificationsRouter);
 app.use('/api/sports', authMiddleware, blockReadOnlyWrites, sportsRouter);
-app.use('/api/tournaments', authMiddleware, planLimitsMiddleware, blockReadOnlyWrites, authorizeTournamentWrite, tournamentsRouter);
-app.use('/api/teams', authMiddleware, planLimitsMiddleware, blockReadOnlyWrites, authorizeTeamWrite, injectOwnershipContext, teamsRouter);
-app.use('/api/matches', authMiddleware, blockReadOnlyWrites, authorizeMatchWrite, matchesRouter);
+app.use('/api/tournaments', authMiddleware, planLimitsMiddleware, tournamentLifecycleMiddleware, blockReadOnlyWrites, authorizeTournamentWrite, tournamentsRouter);
+app.use('/api/teams', authMiddleware, planLimitsMiddleware, tournamentLifecycleMiddleware, blockReadOnlyWrites, authorizeTeamWrite, injectOwnershipContext, teamsRouter);
+app.use('/api/matches', authMiddleware, tournamentLifecycleMiddleware, blockReadOnlyWrites, authorizeMatchWrite, matchesRouter);
 app.use('/api/standings', authMiddleware, standingsRouter);
 app.use('/api/venues', authMiddleware, blockReadOnlyWrites, venuesRouter);
 app.use('/api/announcements', authMiddleware, blockReadOnlyWrites, announcementsRouter);

@@ -169,3 +169,15 @@
 - Se creó endpoint `PUT /api/users/:id/status` (admin only): activa/desactiva un usuario para controlar acceso
 - Se creó endpoint `GET /api/users/plans/available` (público): lista los planes activos para la landing page
 - Se creó `planLimitsMiddleware`: valida límites del plan del organizador antes de crear torneos/equipos. Retorna 403 con mensaje de upgrade cuando se excede el límite
+
+### Agregado
+- Se creó migración `1749600046000_tournament-lifecycle-rules`: agrega campos `player_change_deadline`, `player_change_max_matchday`, `archive_after_days`, `enrollment_closed_at` a tournaments
+- Se creó `tournamentLifecycleMiddleware` que aplica reglas por estado del torneo:
+  - **Finalizado/Archivado/Cancelado**: bloquea TODAS las escrituras (modo solo-lectura)
+  - **Activo + inscripción cerrada**: bloquea inscripción de nuevos equipos (por fecha límite o cierre explícito)
+  - **Activo + deadline de jugadores**: bloquea agregar/cambiar jugadores después de la fecha o jornada configurada
+- El admin (rol `admin`) puede saltarse todas las restricciones de lifecycle
+- Middleware integrado en rutas de tournaments, teams y matches
+
+### Cambiado
+- Rutas `/api/tournaments`, `/api/teams` y `/api/matches`: ahora pasan por `tournamentLifecycleMiddleware` además de los demás middlewares existentes
