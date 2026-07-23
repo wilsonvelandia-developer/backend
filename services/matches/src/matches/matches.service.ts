@@ -219,13 +219,13 @@ export class MatchesService {
   // ── Tournament-level aggregates ───────────────────────────────────────────
 
   /** Get all sanctions (cards) for a tournament with player/team info and suspension status. */
-  async getTournamentSanctions(tournamentId: string): Promise<unknown[]> {
-    return this.repo.findTournamentSanctions(tournamentId);
+  async getTournamentSanctions(tournamentId: string, phaseId?: string): Promise<unknown[]> {
+    return this.repo.findTournamentSanctions(tournamentId, phaseId);
   }
 
   /** Get top scorers for a tournament with goals, assists, and matches played. */
-  async getTournamentScorers(tournamentId: string): Promise<unknown[]> {
-    return this.repo.findTournamentScorers(tournamentId);
+  async getTournamentScorers(tournamentId: string, phaseId?: string): Promise<unknown[]> {
+    return this.repo.findTournamentScorers(tournamentId, phaseId);
   }
 
   /** Get all match assignments for a specific referee. */

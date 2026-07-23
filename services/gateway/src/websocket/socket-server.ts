@@ -34,6 +34,10 @@ const refereeLocks = new Map<string, { socketId: string; userId: string }>();
 /**
  * Creates and configures the Socket.IO server with JWT auth and room management.
  * Attaches to the existing HTTP server.
+ *
+ * Namespaces:
+ *  - / (default): Authenticated users (referees, organizers, chat)
+ *  - /spectator: Anonymous public namespace for live match viewing (no auth required)
  */
 export function createSocketServer(httpServer: HttpServer): Server {
   const allowedOrigins = config.nodeEnv === 'production'
@@ -50,7 +54,40 @@ export function createSocketServer(httpServer: HttpServer): Server {
     pingTimeout: 20000,
   });
 
-  // ── JWT Authentication Middleware ───────────────────────────────────────────
+  // ── Public /spectator namespace — NO authentication required ────────────────
+  const spectatorNs = io.of('/spectator');
+  _spectatorNs = spectatorNs;
+
+  spectatorNs.on('connection', (socket: Socket) => {
+    // Join match room to receive live score updates
+    socket.on('match:join', (data: { matchId: string }) => {
+      if (!data.matchId) return;
+      socket.join(`match:${data.matchId}`);
+    });
+
+    socket.on('match:leave', (data: { matchId: string }) => {
+      if (!data.matchId) return;
+      socket.leave(`match:${data.matchId}`);
+    });
+
+    // Join tournament room for standings/results
+    socket.on('tournament:join', (data: { tournamentId: string }) => {
+      if (!data.tournamentId) return;
+      socket.join(`tournament:${data.tournamentId}`);
+    });
+
+    socket.on('tournament:leave', (data: { tournamentId: string }) => {
+      if (!data.tournamentId) return;
+      socket.leave(`tournament:${data.tournamentId}`);
+    });
+  });
+
+  // Helper: broadcast to spectator namespace (called from authenticated handlers)
+  function broadcastToSpectators(event: string, room: string, data: unknown): void {
+    spectatorNs.to(room).emit(event, data);
+  }
+
+  // ── JWT Authentication Middleware (default namespace only) ──────────────────
   io.use((socket, next) => {
     try {
       const cookieHeader = socket.handshake.headers.cookie;
@@ -111,10 +148,13 @@ export function createSocketServer(httpServer: HttpServer): Server {
     socket.on('standings:updated', (data: { tournamentId: string }) => {
       if (!data.tournamentId) return;
       // Broadcast to all in the tournament room (including sender)
-      io.to(`tournament:${data.tournamentId}`).emit('standings:refresh', {
+      const payload = {
         tournamentId: data.tournamentId,
         timestamp: new Date().toISOString(),
-      });
+      };
+      io.to(`tournament:${data.tournamentId}`).emit('standings:refresh', payload);
+      // Also broadcast to anonymous spectators
+      broadcastToSpectators('standings:refresh', `tournament:${data.tournamentId}`, payload);
     });
 
     // ── Referee: join and lock match ────────────────────────────────────────
@@ -185,4 +225,15 @@ function releaseLock(matchId: string, socketId: string): void {
  */
 export function getRefereeLock(matchId: string): { socketId: string; userId: string } | undefined {
   return refereeLocks.get(matchId);
+}
+
+/** Reference to the spectator namespace for external broadcasting. */
+let _spectatorNs: ReturnType<Server['of']> | null = null;
+
+/**
+ * Broadcasts an event to anonymous spectators in a specific room.
+ * Use from match-handlers to push score updates to public viewers.
+ */
+export function broadcastToPublicSpectators(event: string, room: string, data: unknown): void {
+  _spectatorNs?.to(room).emit(event, data);
 }

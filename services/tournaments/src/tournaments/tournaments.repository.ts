@@ -393,6 +393,233 @@ export class TournamentsRepository {
   }
 
   /**
+   * Automatic group draw — distributes teams across groups based on the chosen mode.
+   * Saves the result using saveGroupDraw (same table), so it can be adjusted manually after.
+   */
+  async autoDrawGroups(
+    tournamentId: string,
+    options: { mode: 'random' | 'serpentine' | 'seeded'; numGroups?: number },
+  ): Promise<{ groups: unknown[]; warnings: string[] }> {
+    // Load tournament to get num_groups config and club separation setting
+    const tResult = await this.pool.query<{ num_groups: number | null; expected_teams: number | null; enforce_club_separation: boolean }>(
+      `SELECT num_groups, expected_teams, enforce_club_separation FROM tournaments WHERE id = $1`,
+      [tournamentId],
+    );
+    if (tResult.rowCount === 0) throw new NotFoundError('Tournament', tournamentId);
+
+    const numGroups = options.numGroups ?? tResult.rows[0].num_groups ?? 2;
+    const enforceClubSeparation = tResult.rows[0].enforce_club_separation;
+
+    // Load all teams registered for this tournament
+    const teamsResult = await this.pool.query<{ id: string; name: string; club_name: string | null }>(
+      `SELECT id, name, club_name FROM teams WHERE tournament_id = $1 AND is_deleted = false ORDER BY name`,
+      [tournamentId],
+    );
+    if (teamsResult.rowCount === 0) {
+      throw new BusinessRuleError('No hay equipos registrados en este torneo para realizar el sorteo.');
+    }
+
+    const teams = teamsResult.rows;
+    if (teams.length < numGroups * 2) {
+      throw new BusinessRuleError(`Se necesitan al menos ${numGroups * 2} equipos para ${numGroups} grupos.`);
+    }
+
+    // Generate group labels: A, B, C, D, ...
+    const groupLabels = Array.from({ length: numGroups }, (_, i) => String.fromCharCode(65 + i));
+
+    // If club separation is enabled, use constraint-aware distribution
+    let assignments: Array<{ teamId: string; groupName: string; drawOrder: number }>;
+    const warnings: string[] = [];
+
+    if (enforceClubSeparation) {
+      assignments = this.distributeWithClubSeparation(teams, groupLabels, options.mode, warnings);
+    } else {
+      assignments = this.distributeSimple(teams, groupLabels, options.mode);
+    }
+
+    // Save using the same method as manual draw
+    await this.saveGroupDraw(tournamentId, assignments);
+
+    // Return the grouped result for the frontend
+    const grouped = new Map<string, Array<{ teamId: string; teamName: string; clubName: string | null; drawOrder: number }>>();
+    for (const a of assignments) {
+      if (!grouped.has(a.groupName)) grouped.set(a.groupName, []);
+      const team = teams.find((t) => t.id === a.teamId);
+      grouped.get(a.groupName)!.push({
+        teamId: a.teamId,
+        teamName: team?.name ?? '',
+        clubName: team?.club_name ?? null,
+        drawOrder: a.drawOrder,
+      });
+    }
+
+    const groups = [...grouped.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([groupName, groupTeams]) => ({
+        groupName,
+        teams: groupTeams.sort((a, b) => a.drawOrder - b.drawOrder),
+      }));
+
+    return { groups, warnings };
+  }
+
+  /**
+   * Distributes teams across groups ensuring teams from the same club
+   * are in different groups when possible. Uses best-effort approach:
+   * - If a club has fewer teams than groups: full separation guaranteed
+   * - If a club has more teams than groups: distributes as evenly as possible and returns warnings
+   */
+  private distributeWithClubSeparation(
+    teams: Array<{ id: string; name: string; club_name: string | null }>,
+    groupLabels: string[],
+    mode: 'random' | 'serpentine' | 'seeded',
+    warnings: string[] = [],
+  ): Array<{ teamId: string; groupName: string; drawOrder: number }> {
+    const numGroups = groupLabels.length;
+
+    // Separate teams into clubs and individuals
+    const clubMap = new Map<string, Array<{ id: string; name: string }>>();
+    const individuals: Array<{ id: string; name: string }> = [];
+
+    for (const team of teams) {
+      if (team.club_name) {
+        if (!clubMap.has(team.club_name)) clubMap.set(team.club_name, []);
+        clubMap.get(team.club_name)!.push(team);
+      } else {
+        individuals.push(team);
+      }
+    }
+
+    // Warn (not block) if a club has more teams than groups
+    for (const [clubName, clubTeams] of clubMap) {
+      if (clubTeams.length > numGroups) {
+        warnings.push(
+          `El club "${clubName}" tiene ${clubTeams.length} equipos y solo hay ${numGroups} grupos. ` +
+          `Se distribuirán lo más equitativamente posible, pero al menos ${clubTeams.length - numGroups} equipos del mismo club quedarán en el mismo grupo.`,
+        );
+      }
+    }
+
+    // Track group sizes for balance
+    const groupSizes = new Map<string, number>();
+    for (const label of groupLabels) groupSizes.set(label, 0);
+    const maxPerGroup = Math.ceil(teams.length / numGroups);
+
+    const assignments: Array<{ teamId: string; groupName: string; drawOrder: number }> = [];
+
+    // Track which clubs are already in which groups (for best-effort separation)
+    const clubInGroup = new Map<string, Set<string>>(); // clubName → Set of groupNames
+
+    // Phase 1: Place club teams — spread them as much as possible
+    // Sort clubs by size (largest first — hardest constraint first)
+    const sortedClubs = [...clubMap.entries()].sort((a, b) => b[1].length - a[1].length);
+
+    for (const [clubName, clubTeams] of sortedClubs) {
+      // Shuffle within club if random mode
+      if (mode === 'random') {
+        for (let i = clubTeams.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [clubTeams[i], clubTeams[j]] = [clubTeams[j], clubTeams[i]];
+        }
+      }
+
+      if (!clubInGroup.has(clubName)) clubInGroup.set(clubName, new Set());
+
+      for (const team of clubTeams) {
+        const usedGroups = clubInGroup.get(clubName)!;
+
+        // Prefer groups that don't already have a team from this club
+        const preferredGroups = groupLabels
+          .filter((g) => !usedGroups.has(g) && (groupSizes.get(g) ?? 0) < maxPerGroup)
+          .sort((a, b) => (groupSizes.get(a) ?? 0) - (groupSizes.get(b) ?? 0));
+
+        // If no preferred groups (all have this club already), use least-filled group
+        const fallbackGroups = groupLabels
+          .filter((g) => (groupSizes.get(g) ?? 0) < maxPerGroup)
+          .sort((a, b) => (groupSizes.get(a) ?? 0) - (groupSizes.get(b) ?? 0));
+
+        const targetGroup = preferredGroups.length > 0
+          ? preferredGroups[0]
+          : (fallbackGroups[0] ?? groupLabels[0]);
+
+        const order = (groupSizes.get(targetGroup) ?? 0) + 1;
+        groupSizes.set(targetGroup, order);
+        usedGroups.add(targetGroup);
+        assignments.push({ teamId: team.id, groupName: targetGroup, drawOrder: order });
+      }
+    }
+
+    // Phase 2: Place individual teams (no club) in remaining spots
+    if (mode === 'random') {
+      for (let i = individuals.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [individuals[i], individuals[j]] = [individuals[j], individuals[i]];
+      }
+    }
+
+    for (const team of individuals) {
+      const leastFilled = groupLabels
+        .filter((g) => (groupSizes.get(g) ?? 0) < maxPerGroup)
+        .sort((a, b) => (groupSizes.get(a) ?? 0) - (groupSizes.get(b) ?? 0))[0]
+        ?? groupLabels[0];
+
+      const order = (groupSizes.get(leastFilled) ?? 0) + 1;
+      groupSizes.set(leastFilled, order);
+      assignments.push({ teamId: team.id, groupName: leastFilled, drawOrder: order });
+    }
+
+    return assignments;
+  }
+
+  /**
+   * Simple distribution without club constraints (original logic).
+   */
+  private distributeSimple(
+    teams: Array<{ id: string; name: string; club_name: string | null }>,
+    groupLabels: string[],
+    mode: 'random' | 'serpentine' | 'seeded',
+  ): Array<{ teamId: string; groupName: string; drawOrder: number }> {
+    const numGroups = groupLabels.length;
+    let orderedTeams = [...teams];
+
+    if (mode === 'random') {
+      for (let i = orderedTeams.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [orderedTeams[i], orderedTeams[j]] = [orderedTeams[j], orderedTeams[i]];
+      }
+    }
+
+    const assignments: Array<{ teamId: string; groupName: string; drawOrder: number }> = [];
+    const groupCounters = new Map<string, number>();
+    for (const label of groupLabels) groupCounters.set(label, 0);
+
+    if (mode === 'serpentine' || mode === 'seeded') {
+      let groupIdx = 0;
+      let direction = 1;
+
+      for (const team of orderedTeams) {
+        const groupName = groupLabels[groupIdx];
+        const order = (groupCounters.get(groupName) ?? 0) + 1;
+        groupCounters.set(groupName, order);
+        assignments.push({ teamId: team.id, groupName, drawOrder: order });
+
+        groupIdx += direction;
+        if (groupIdx >= numGroups) { groupIdx = numGroups - 1; direction = -1; }
+        else if (groupIdx < 0) { groupIdx = 0; direction = 1; }
+      }
+    } else {
+      for (let i = 0; i < orderedTeams.length; i++) {
+        const groupName = groupLabels[i % numGroups];
+        const order = (groupCounters.get(groupName) ?? 0) + 1;
+        groupCounters.set(groupName, order);
+        assignments.push({ teamId: orderedTeams[i].id, groupName, drawOrder: order });
+      }
+    }
+
+    return assignments;
+  }
+
+  /**
    * Generates round-robin matches for all groups using the circle method.
    * Algorithm:
    *  - For n teams: n-1 rounds, each round has n/2 matches
@@ -698,6 +925,247 @@ export class TournamentsRepository {
     return ['Final'];
   }
 
+  // ── Auto-advance knockout ─────────────────────────────────────────────────
+
+  /**
+   * Advances a knockout phase: takes winners from finished matches in the current round
+   * and generates matches for the next round (e.g., semifinal → final).
+   * Optionally creates a 3rd-place match from the losers of the last round.
+   *
+   * @param phaseId - The knockout phase to advance
+   * @param options.includeThirdPlace - Whether to create a 3rd-place match from losers
+   * @param options.scheduledAt - Optional date for the next round matches
+   */
+  async advanceKnockout(
+    phaseId: string,
+    options: { includeThirdPlace?: boolean; scheduledAt?: string } = {},
+  ): Promise<{ nextRoundMatches: unknown[]; thirdPlaceMatch: unknown | null }> {
+    // Load all matches in this phase ordered by round then scheduled_at
+    const matchesResult = await this.pool.query<{
+      id: string; home_team_id: string; away_team_id: string;
+      winner_id: string | null; status: string; round: string | null;
+    }>(
+      `SELECT id, home_team_id, away_team_id, winner_id, status, round
+       FROM matches WHERE phase_id = $1
+       ORDER BY round ASC NULLS LAST, scheduled_at ASC, created_at ASC`,
+      [phaseId],
+    );
+
+    if (matchesResult.rowCount === 0) {
+      throw new BusinessRuleError('No hay partidos en esta fase.');
+    }
+
+    // Group matches by round
+    const roundMap = new Map<string, Array<{ id: string; winnerId: string | null; loserId: string | null; status: string }>>();
+    for (const m of matchesResult.rows) {
+      const round = m.round ?? 'Ronda';
+      if (!roundMap.has(round)) roundMap.set(round, []);
+      const loserId = m.winner_id
+        ? (m.winner_id === m.home_team_id ? m.away_team_id : m.home_team_id)
+        : null;
+      roundMap.get(round)!.push({ id: m.id, winnerId: m.winner_id, loserId, status: m.status });
+    }
+
+    // Find the latest round that has all matches finished
+    const rounds = [...roundMap.entries()];
+    let latestFinishedRound: string | null = null;
+    let latestFinishedMatches: Array<{ id: string; winnerId: string | null; loserId: string | null }> = [];
+
+    for (const [roundName, matches] of rounds) {
+      const allFinished = matches.every((m) => m.status === 'finished');
+      if (allFinished && matches.length > 0) {
+        latestFinishedRound = roundName;
+        latestFinishedMatches = matches;
+      }
+    }
+
+    if (!latestFinishedRound || latestFinishedMatches.length === 0) {
+      throw new BusinessRuleError('No hay ronda completa (todos los partidos finalizados) para avanzar.');
+    }
+
+    // Check all matches have a winner
+    const winners = latestFinishedMatches.map((m) => m.winnerId).filter(Boolean) as string[];
+    const losers  = latestFinishedMatches.map((m) => m.loserId).filter(Boolean) as string[];
+
+    if (winners.length < 2) {
+      throw new BusinessRuleError('Se necesitan al menos 2 ganadores para generar la siguiente ronda.');
+    }
+
+    // Determine next round name
+    const roundNames = this.getRoundNames(winners.length);
+    const nextRoundLabel = roundNames.length > 0 ? roundNames[0] : 'Final';
+
+    // Check if next round matches already exist
+    const existingNext = await this.pool.query(
+      `SELECT 1 FROM matches WHERE phase_id = $1 AND round = $2 LIMIT 1`,
+      [phaseId, nextRoundLabel],
+    );
+    if ((existingNext.rowCount ?? 0) > 0) {
+      throw new BusinessRuleError(`La ronda "${nextRoundLabel}" ya tiene partidos creados.`);
+    }
+
+    // Generate next round matches (winners paired in order)
+    const nextMatches: unknown[] = [];
+    for (let i = 0; i < winners.length; i += 2) {
+      if (i + 1 >= winners.length) break; // odd number — BYE
+      const result = await this.pool.query(
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at, round)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [phaseId, winners[i], winners[i + 1], options.scheduledAt ?? null, nextRoundLabel],
+      );
+      nextMatches.push(result.rows[0]);
+    }
+
+    // Generate 3rd place match from losers if requested
+    let thirdPlaceMatch: unknown | null = null;
+    if (options.includeThirdPlace && losers.length >= 2) {
+      const result = await this.pool.query(
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at, round)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [phaseId, losers[0], losers[1], options.scheduledAt ?? null, 'Tercer puesto'],
+      );
+      thirdPlaceMatch = result.rows[0];
+    }
+
+    return { nextRoundMatches: nextMatches, thirdPlaceMatch };
+  }
+
+  // ── Generate knockout by cup position ranges ──────────────────────────────
+
+  /**
+   * Generates a knockout phase for a specific cup, using teams from specific
+   * group positions (e.g., Copa Oro: positions 1-2, Copa Plata: positions 3-4).
+   *
+   * @param tournamentId - Tournament ID
+   * @param cupId - Cup ID (from tournament_cups table)
+   * @param options.startDate - Optional start date for matches
+   * @param options.scheduledAt - Optional specific datetime for all matches
+   */
+  async generateKnockoutByCup(
+    tournamentId: string,
+    cupId: string,
+    options: { startDate?: string; scheduledAt?: string } = {},
+  ): Promise<unknown[]> {
+    // Load the cup config
+    const cupResult = await this.pool.query<{
+      id: string; name: string;
+      group_positions_from: number; group_positions_to: number;
+      has_semifinals: boolean; has_third_place: boolean;
+    }>(
+      `SELECT id, name, group_positions_from, group_positions_to, has_semifinals, has_third_place
+       FROM tournament_cups WHERE id = $1 AND tournament_id = $2`,
+      [cupId, tournamentId],
+    );
+    if (cupResult.rowCount === 0) throw new NotFoundError('Cup', cupId);
+    const cup = cupResult.rows[0];
+
+    // Load standings from group phase
+    const standingsResult = await this.pool.query<{
+      team_id: string; group_name: string; position: number;
+    }>(
+      `SELECT s.team_id, tg.group_name,
+              ROW_NUMBER() OVER (PARTITION BY tg.group_name ORDER BY s.points DESC, (s.score_for - s.score_against) DESC, s.score_for DESC)::int AS position
+       FROM standings s
+       JOIN phases p ON p.id = s.phase_id
+       JOIN team_groups tg ON tg.team_id = s.team_id AND tg.tournament_id = p.tournament_id
+       WHERE p.tournament_id = $1 AND p.name = 'Fase de Grupos'`,
+      [tournamentId],
+    );
+
+    if (standingsResult.rowCount === 0) {
+      throw new BusinessRuleError('No hay posiciones calculadas. Finaliza los partidos de grupo primero.');
+    }
+
+    // Filter teams by position range for this cup
+    const qualifiedTeams: Array<{ teamId: string; groupName: string; position: number }> = [];
+    for (const row of standingsResult.rows) {
+      if (row.position >= cup.group_positions_from && row.position <= cup.group_positions_to) {
+        qualifiedTeams.push({ teamId: row.team_id, groupName: row.group_name, position: row.position });
+      }
+    }
+
+    if (qualifiedTeams.length < 2) {
+      throw new BusinessRuleError(`La ${cup.name} necesita al menos 2 equipos clasificados en posiciones ${cup.group_positions_from}-${cup.group_positions_to}.`);
+    }
+
+    // Sort groups alphabetically
+    const groups = [...new Set(qualifiedTeams.map((t) => t.groupName))].sort();
+
+    // Standard cross-group seeding for 2 groups:
+    // Position X from group A vs Position Y from group B (X cross Y)
+    // e.g., 1A vs 2B, 1B vs 2A for Copa Oro; 3A vs 4B, 3B vs 4A for Copa Plata
+    const teamsByGroup = new Map<string, Array<{ teamId: string; position: number }>>();
+    for (const t of qualifiedTeams) {
+      if (!teamsByGroup.has(t.groupName)) teamsByGroup.set(t.groupName, []);
+      teamsByGroup.get(t.groupName)!.push({ teamId: t.teamId, position: t.position });
+    }
+
+    // Sort each group by position
+    for (const [, teams] of teamsByGroup) {
+      teams.sort((a, b) => a.position - b.position);
+    }
+
+    // Generate cross-group pairings
+    const pairings: Array<{ home: string; away: string }> = [];
+    if (groups.length === 2) {
+      const [groupA, groupB] = groups;
+      const teamsA = teamsByGroup.get(groupA) ?? [];
+      const teamsB = teamsByGroup.get(groupB) ?? [];
+      // Cross: 1st of A vs last of B, 2nd of A vs second-to-last of B, etc.
+      for (let i = 0; i < Math.min(teamsA.length, teamsB.length); i++) {
+        pairings.push({ home: teamsA[i].teamId, away: teamsB[teamsB.length - 1 - i].teamId });
+      }
+    } else {
+      // For 3+ groups: standard bracket seeding
+      const allTeams = qualifiedTeams.sort((a, b) => a.position - b.position || a.groupName.localeCompare(b.groupName));
+      for (let i = 0; i < allTeams.length; i += 2) {
+        if (i + 1 < allTeams.length) {
+          pairings.push({ home: allTeams[i].teamId, away: allTeams[i + 1].teamId });
+        }
+      }
+    }
+
+    // Create or find phase for this cup
+    const phaseName = cup.name;
+    let phaseResult = await this.pool.query<PhaseRow>(
+      `SELECT * FROM phases WHERE tournament_id = $1 AND name = $2 LIMIT 1`,
+      [tournamentId, phaseName],
+    );
+    if (phaseResult.rowCount === 0) {
+      const maxOrder = await this.pool.query<{ max: number }>(
+        `SELECT COALESCE(MAX(order_index), 0) + 1 AS max FROM phases WHERE tournament_id = $1`,
+        [tournamentId],
+      );
+      phaseResult = await this.pool.query<PhaseRow>(
+        `INSERT INTO phases (tournament_id, name, format, order_index, status)
+         VALUES ($1, $2, 'single_elim', $3, 'pending') RETURNING *`,
+        [tournamentId, phaseName, maxOrder.rows[0].max],
+      );
+    }
+    const phaseId = phaseResult.rows[0].id;
+
+    // Delete existing matches for this phase (re-generation)
+    await this.pool.query(`DELETE FROM matches WHERE phase_id = $1 AND status = 'scheduled'`, [phaseId]);
+
+    // Determine round label
+    const roundLabel = pairings.length >= 4 ? 'Cuartos de final'
+      : pairings.length >= 2 ? 'Semifinal'
+      : 'Final';
+
+    // Create matches
+    const createdMatches: unknown[] = [];
+    for (const pair of pairings) {
+      const result = await this.pool.query(
+        `INSERT INTO matches (phase_id, home_team_id, away_team_id, scheduled_at, round)
+         VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+        [phaseId, pair.home, pair.away, options.scheduledAt ?? null, roundLabel],
+      );
+      createdMatches.push(result.rows[0]);
+    }
+
+    return createdMatches;
+  }
+
   // ── Cups ──────────────────────────────────────────────────────────────────
 
   async getCups(tournamentId: string): Promise<unknown[]> {
@@ -768,6 +1236,14 @@ export class TournamentsRepository {
   async enrollTeam(tournamentId: string, data: {
     teamName: string;
     shortName?: string;
+    clubName?: string;
+    imageUrl?: string;
+    colorPrimary?: string;
+    colorSecondary?: string;
+    instagramUrl?: string;
+    facebookUrl?: string;
+    tiktokUrl?: string;
+    youtubeUrl?: string;
     contactName: string;
     contactPhone: string;
     contactEmail?: string;
@@ -786,11 +1262,20 @@ export class TournamentsRepository {
     try {
       await client.query('BEGIN');
 
-      // Create team
+      // Create team with all enrollment fields
       const teamResult = await client.query<{ id: string }>(
-        `INSERT INTO teams (tournament_id, name, short_name, phone, email, status)
-         VALUES ($1, $2, $3, $4, $5, 'active') RETURNING id`,
-        [tournamentId, data.teamName, data.shortName || null, data.contactPhone, data.contactEmail || null],
+        `INSERT INTO teams (tournament_id, name, short_name, club_name, image_url,
+                            color_primary, color_secondary,
+                            instagram_url, facebook_url, tiktok_url, youtube_url,
+                            phone, email, status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active') RETURNING id`,
+        [
+          tournamentId, data.teamName, data.shortName || null, data.clubName || null,
+          data.imageUrl || null, data.colorPrimary || null, data.colorSecondary || null,
+          data.instagramUrl || null, data.facebookUrl || null,
+          data.tiktokUrl || null, data.youtubeUrl || null,
+          data.contactPhone, data.contactEmail || null,
+        ],
       );
       const teamId = teamResult.rows[0].id;
 
@@ -858,6 +1343,49 @@ export class TournamentsRepository {
 
   async deleteVenue(venueId: string): Promise<void> {
     await this.pool.query(`DELETE FROM venues WHERE id=$1`, [venueId]);
+  }
+
+  // ── Venue Courts ──────────────────────────────────────────────────────────
+
+  async getVenueCourts(tournamentId: string, venueId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT id, venue_id AS "venueId", name, court_number AS "courtNumber", is_active AS "isActive"
+       FROM venue_courts
+       WHERE tournament_id = $1 AND venue_id = $2
+       ORDER BY court_number`,
+      [tournamentId, venueId],
+    );
+    return result.rows;
+  }
+
+  async saveVenueCourts(
+    tournamentId: string,
+    venueId: string,
+    courts: Array<{ name: string; courtNumber: number }>,
+  ): Promise<unknown[]> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      // Remove existing courts for this venue+tournament (allows re-configuration)
+      await client.query(
+        `DELETE FROM venue_courts WHERE tournament_id = $1 AND venue_id = $2`,
+        [tournamentId, venueId],
+      );
+      for (const court of courts) {
+        await client.query(
+          `INSERT INTO venue_courts (tournament_id, venue_id, name, court_number)
+           VALUES ($1, $2, $3, $4)`,
+          [tournamentId, venueId, court.name, court.courtNumber],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+    return this.getVenueCourts(tournamentId, venueId);
   }
 
   // ── Announcements ─────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ export class TeamsService {
       tournamentId:   dto.tournamentId ?? null,
       name:           dto.name,
       shortName:      dto.shortName ?? null,
+      clubName:       dto.clubName ?? null,
       imageUrl:       dto.imageUrl ?? null,
       phone:          dto.phone ?? null,
       email:          dto.email ?? null,

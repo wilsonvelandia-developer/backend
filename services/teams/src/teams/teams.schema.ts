@@ -9,6 +9,7 @@ const teamBaseSchema = z.object({
   tournamentId:   z.string().uuid('tournamentId must be a valid UUID').nullable().default(null),
   name:           z.string().trim().min(2).max(200),
   shortName:      z.string().trim().min(1).max(10).nullable().default(null),
+  clubName:       z.string().trim().max(200).nullable().default(null),
   imageUrl:       optionalUrl(),
   phone:          z.string().trim().max(30).nullable().default(null),
   email:          z.string().max(255).nullable().default(null),

@@ -107,3 +107,41 @@
 ### Cambiado
 - Graceful shutdown mejorado: timeout de 15s para drain, logging de progreso por fase (HTTP close, DB close), force-exit si se excede el timeout
 - Orden de middleware actualizado: `apiVersionMiddleware` después de correlationMiddleware, `contentTypeMiddleware` después de `express.json`
+
+### Agregado
+- Se creó endpoint `POST /tournaments/:id/advance-knockout` — avanza fase eliminatoria: toma ganadores de la ronda actual y crea partidos de la siguiente ronda (semifinal → final). Opcionalmente crea partido por 3er puesto con los perdedores
+- Se creó endpoint `POST /tournaments/:id/cups/:cupId/generate` — genera eliminatoria por copa: filtra equipos por rango de posiciones del grupo (e.g., Copa Oro posiciones 1-2, Copa Plata posiciones 3-4) con seeding cruzado entre grupos (1A vs 2B, 1B vs 2A)
+- Se agregó parámetro opcional `?phaseId=X` a `GET /matches/scorers` y `GET /matches/sanctions` para filtrar estadísticas por fase/copa específica
+- Se creó namespace WebSocket público `/spectator` sin autenticación: permite a espectadores anónimos recibir actualizaciones en tiempo real de marcadores y posiciones (events: `match:score_update`, `match:finished`, `standings:refresh`)
+- Se implementó broadcast de eventos de standings al namespace público `/spectator` automáticamente cuando un árbitro finaliza un partido
+
+### Cambiado
+- `findTournamentSanctions` y `findTournamentScorers`: aceptan `phaseId` opcional con queries parametrizadas (seguras contra SQL injection)
+- Las funcionalidades de generación automática (`generate-fixture`, `generate-knockout`, `cups/:cupId/generate`, `advance-knockout`) coexisten con la creación manual (`POST /phases`, `POST /matches`) — el organizador puede elegir entre ambos modos
+
+### Agregado
+- Se creó tabla `venue_courts` (migración `1749600041000`): sub-espacios dentro de una sede (un coliseo puede tener 2+ canchas). Campos: `venue_id`, `tournament_id`, `name`, `court_number`, `is_active`
+- Se agregó columna `venue_court_id` (UUID FK → venue_courts) en `matches` para vincular un partido a un espacio específico
+- Se agregaron campos de configuración de descanso en `tournaments`: `enable_rest_validation` (boolean, default false) y `min_rest_between_matches` (integer, minutos)
+- Se creó `SchedulingValidator` en `@tournament/shared` (`shared/src/scheduling/scheduling-validator.ts`): valida conflictos de cancha (solapamiento de horario), descanso mínimo entre partidos de un equipo, y disponibilidad de árbitros
+- Se creó endpoint `POST /tournaments/:id/auto-draw`: sorteo automático de grupos con modos `random` (aleatorio), `serpentine` (snake draft) y `seeded` (distribución por pots). Distribuye equipos equitativamente. Resultado modificable después con drag-and-drop (manual override vía POST /groups)
+- Se crearon endpoints `GET/POST /tournaments/:id/venues/:venueId/courts` para gestionar sub-espacios por sede
+- Comentario en POST /groups: clarifica que es la opción manual (drag-and-drop) que coexiste con auto-draw
+
+### Cambiado
+- `num_venues` constraint ampliado conceptualmente: ahora cada venue puede tener múltiples courts (un coliseo dividido en 2 espacios = 1 venue, 2 courts)
+
+### Agregado
+- Se agregó campo `club_name` (varchar 200) a la tabla `teams`: identifica a qué club pertenece un equipo (e.g., "Club Deportivo Juventud CEDIJ"). Equipos con el mismo club_name son del mismo club
+- Se agregó campo `enforce_club_separation` (boolean, default true) a `tournaments`: cuando está activo, el sorteo automático garantiza que equipos del mismo club queden en grupos diferentes
+- Algoritmo de separación por club en `autoDrawGroups`: agrupa equipos por club, los distribuye primero en grupos diferentes (constraint-satisfaction), valida que ningún club tenga más equipos que grupos disponibles
+- Se actualizó `createTeamSchema` y `CreateTeamInput` para incluir `clubName` como campo opcional
+
+### Cambiado
+- `autoDrawGroups`: ahora distingue entre distribución con separación de club (constraint-aware) y distribución simple. Retorna también `clubName` en la respuesta para que el frontend muestre la afiliación al club
+- La creación de equipos (`POST /teams`) ahora acepta `clubName` opcional en el body
+
+### Cambiado
+- `enrollTeam` (inscripción pública): ahora acepta campos adicionales: `clubName`, `imageUrl`, `colorPrimary`, `colorSecondary`, `instagramUrl`, `facebookUrl`, `tiktokUrl`, `youtubeUrl`
+- Algoritmo de separación por club: ya no lanza error cuando un club tiene más equipos que grupos — distribuye de la mejor manera posible y retorna `warnings[]` en la respuesta
+- `autoDrawGroups` respuesta: ahora incluye `{ groups, warnings }` donde warnings contiene advertencias de separación parcial

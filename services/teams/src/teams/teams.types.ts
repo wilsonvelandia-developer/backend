@@ -48,6 +48,7 @@ export interface CreateTeamInput {
   tournamentId: string | null;
   name:         string;
   shortName:    string | null;
+  clubName?:    string | null;
   imageUrl?:    string | null;
   phone?:       string | null;
   email?:       string | null;

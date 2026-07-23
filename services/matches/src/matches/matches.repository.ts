@@ -1329,7 +1329,14 @@ export class MatchesRepository {
    * Returns all sanctions for a tournament with player/team info and suspension detection.
    * A player is considered suspended if they have a RED card or accumulated yellows >= limit.
    */
-  async findTournamentSanctions(tournamentId: string): Promise<unknown[]> {
+  async findTournamentSanctions(tournamentId: string, phaseId?: string): Promise<unknown[]> {
+    const values: unknown[] = [tournamentId];
+    let phaseCondition = '';
+    if (phaseId) {
+      values.push(phaseId);
+      phaseCondition = `AND ph.id = $${values.length}`;
+    }
+
     const result = await this.pool.query(
       `SELECT ms.id, ms.player_id AS "playerId", p.name AS "playerName",
               t.name AS "teamName", ms.match_id AS "matchId",
@@ -1337,14 +1344,14 @@ export class MatchesRepository {
               m.scheduled_at AS "matchDate",
               (SELECT COUNT(*) FROM match_sanctions ms2
                WHERE ms2.player_id = ms.player_id
-               AND ms2.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1))
+               AND ms2.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1 ${phaseCondition}))
                AND ms2.sanction_type_id IN (SELECT id FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1)
               )::int AS "accumulatedYellows",
               CASE
                 WHEN st.code = 'RED' THEN true
                 WHEN (SELECT COUNT(*) FROM match_sanctions ms3
                       WHERE ms3.player_id = ms.player_id
-                      AND ms3.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1))
+                      AND ms3.match_id IN (SELECT id FROM matches WHERE phase_id IN (SELECT id FROM phases WHERE tournament_id = $1 ${phaseCondition}))
                       AND ms3.sanction_type_id IN (SELECT id FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1)
                      ) >= COALESCE((SELECT accumulation_limit FROM sanction_types WHERE code = 'YELLOW' AND tournament_id = $1), 999)
                 THEN true
@@ -1356,9 +1363,9 @@ export class MatchesRepository {
        JOIN teams t ON t.id = ms.team_id
        JOIN matches m ON m.id = ms.match_id
        JOIN phases ph ON ph.id = m.phase_id
-       WHERE ph.tournament_id = $1
+       WHERE ph.tournament_id = $1 ${phaseCondition}
        ORDER BY ms.created_at DESC`,
-      [tournamentId],
+      values,
     );
     return result.rows;
   }
@@ -1366,7 +1373,14 @@ export class MatchesRepository {
   /**
    * Returns top scorers for a tournament aggregated from match_scorers table.
    */
-  async findTournamentScorers(tournamentId: string): Promise<unknown[]> {
+  async findTournamentScorers(tournamentId: string, phaseId?: string): Promise<unknown[]> {
+    const values: unknown[] = [tournamentId];
+    let phaseCondition = '';
+    if (phaseId) {
+      values.push(phaseId);
+      phaseCondition = `AND ph.id = $${values.length}`;
+    }
+
     const result = await this.pool.query(
       `SELECT
          ms.player_id AS "playerId",
@@ -1382,12 +1396,12 @@ export class MatchesRepository {
        JOIN teams t ON t.id = ms.team_id
        JOIN matches m ON m.id = ms.match_id
        JOIN phases ph ON ph.id = m.phase_id
-       WHERE ph.tournament_id = $1
+       WHERE ph.tournament_id = $1 ${phaseCondition}
        GROUP BY ms.player_id, p.name, t.name, t.short_name
        HAVING COUNT(*) > 0
        ORDER BY "goals" DESC, "matchesPlayed" ASC
        LIMIT 50`,
-      [tournamentId],
+      values,
     );
     return result.rows;
   }

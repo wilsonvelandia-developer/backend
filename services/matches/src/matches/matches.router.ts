@@ -59,7 +59,7 @@ export function buildMatchesRouter(service: MatchesService, audit?: AuditService
     }
   });
 
-  // GET /matches/sanctions?tournamentId=X — aggregated sanctions for a tournament
+  // GET /matches/sanctions?tournamentId=X&phaseId=Y — aggregated sanctions for a tournament (optionally filtered by phase)
   router.get('/sanctions', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tournamentId = req.query['tournamentId'] as string | undefined;
@@ -67,14 +67,15 @@ export function buildMatchesRouter(service: MatchesService, audit?: AuditService
         res.status(400).json({ data: null, success: false, message: 'tournamentId is required' });
         return;
       }
-      const sanctions = await service.getTournamentSanctions(tournamentId);
+      const phaseId = req.query['phaseId'] as string | undefined;
+      const sanctions = await service.getTournamentSanctions(tournamentId, phaseId);
       res.json({ data: sanctions });
     } catch (err) {
       next(err);
     }
   });
 
-  // GET /matches/scorers?tournamentId=X — top scorers for a tournament
+  // GET /matches/scorers?tournamentId=X&phaseId=Y — top scorers for a tournament (optionally filtered by phase)
   router.get('/scorers', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const tournamentId = req.query['tournamentId'] as string | undefined;
@@ -82,7 +83,8 @@ export function buildMatchesRouter(service: MatchesService, audit?: AuditService
         res.status(400).json({ data: null, success: false, message: 'tournamentId is required' });
         return;
       }
-      const scorers = await service.getTournamentScorers(tournamentId);
+      const phaseId = req.query['phaseId'] as string | undefined;
+      const scorers = await service.getTournamentScorers(tournamentId, phaseId);
       res.json({ data: scorers });
     } catch (err) {
       next(err);

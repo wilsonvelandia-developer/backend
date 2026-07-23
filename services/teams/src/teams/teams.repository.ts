@@ -120,13 +120,14 @@ export class TeamsRepository {
 
     try {
       const result = await this.pool.query<TeamRow>(
-        `INSERT INTO teams (tournament_id, name, short_name, image_url, phone, email,
+        `INSERT INTO teams (tournament_id, name, short_name, club_name, image_url, phone, email,
                             instagram_url, facebook_url, tiktok_url, youtube_url,
                             color_primary, color_secondary, variant)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING *`,
         [
           input.tournamentId, input.name, input.shortName,
+          input.clubName ?? null,
           input.imageUrl ?? null, input.phone ?? null, input.email ?? null,
           input.instagramUrl ?? null, input.facebookUrl ?? null,
           input.tiktokUrl ?? null, input.youtubeUrl ?? null,

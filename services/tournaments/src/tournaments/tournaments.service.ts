@@ -139,6 +139,22 @@ export class TournamentsService {
   }
 
   /**
+   * Automatic group draw — distributes teams equally across groups.
+   * Modes:
+   *  - 'random': shuffles teams randomly and distributes round-robin
+   *  - 'serpentine': distributes in snake order (1→A, 2→B, 3→B, 4→A, 5→A, 6→B...)
+   *  - 'seeded': spreads top seeds across groups (pot system)
+   *
+   * After auto-draw, the result can be adjusted manually via saveGroupDraw (drag-and-drop).
+   */
+  async autoDrawGroups(
+    tournamentId: string,
+    options: { mode: 'random' | 'serpentine' | 'seeded'; numGroups?: number },
+  ): Promise<{ groups: unknown[]; warnings: string[] }> {
+    return this.repo.autoDrawGroups(tournamentId, options);
+  }
+
+  /**
    * Generates round-robin matches for the group phase.
    * Uses circle method algorithm — no repeated matchups.
    * Creates a "Fase de Grupos" phase if it doesn't exist.
@@ -172,6 +188,29 @@ export class TournamentsService {
     return this.repo.generateKnockoutFromStandings(tournamentId, config);
   }
 
+  /**
+   * Advances knockout phase: generates next round from winners of finished matches.
+   * Optionally creates 3rd-place match from losers.
+   */
+  async advanceKnockout(
+    phaseId: string,
+    options: { includeThirdPlace?: boolean; scheduledAt?: string } = {},
+  ): Promise<{ nextRoundMatches: unknown[]; thirdPlaceMatch: unknown | null }> {
+    return this.repo.advanceKnockout(phaseId, options);
+  }
+
+  /**
+   * Generates knockout bracket for a specific cup using position ranges.
+   * E.g., Copa Oro: positions 1-2 from each group, Copa Plata: positions 3-4.
+   */
+  async generateKnockoutByCup(
+    tournamentId: string,
+    cupId: string,
+    options: { startDate?: string; scheduledAt?: string } = {},
+  ): Promise<unknown[]> {
+    return this.repo.generateKnockoutByCup(tournamentId, cupId, options);
+  }
+
   // ── Cups ──────────────────────────────────────────────────────────────────
 
   async getCups(tournamentId: string): Promise<unknown[]> {
@@ -202,6 +241,14 @@ export class TournamentsService {
   async enrollTeam(tournamentId: string, data: {
     teamName: string;
     shortName?: string;
+    clubName?: string;
+    imageUrl?: string;
+    colorPrimary?: string;
+    colorSecondary?: string;
+    instagramUrl?: string;
+    facebookUrl?: string;
+    tiktokUrl?: string;
+    youtubeUrl?: string;
     contactName: string;
     contactPhone: string;
     contactEmail?: string;
@@ -223,6 +270,14 @@ export class TournamentsService {
   }
   async deleteVenue(venueId: string): Promise<void> {
     return this.repo.deleteVenue(venueId);
+  }
+
+  async getVenueCourts(tournamentId: string, venueId: string): Promise<unknown[]> {
+    return this.repo.getVenueCourts(tournamentId, venueId);
+  }
+
+  async saveVenueCourts(tournamentId: string, venueId: string, courts: Array<{ name: string; courtNumber: number }>): Promise<unknown[]> {
+    return this.repo.saveVenueCourts(tournamentId, venueId, courts);
   }
 
   // ── Announcements ─────────────────────────────────────────────────────────

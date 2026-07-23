@@ -186,6 +186,7 @@ export function buildTournamentsRouter(service: TournamentsService, audit?: Audi
   });
 
   // POST /tournaments/:id/groups — save group draw
+  // POST /tournaments/:id/groups — save group draw (manual drag-and-drop)
   router.post('/:id/groups', async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = tournamentIdSchema.parse(req.params);
@@ -193,6 +194,28 @@ export function buildTournamentsRouter(service: TournamentsService, audit?: Audi
       await service.saveGroupDraw(id, assignments);
       const groups = await service.getGroups(id);
       res.status(201).json({ data: groups });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/auto-draw — automatic group draw
+  // Modes: 'random' (default), 'serpentine' (seed-based snake), 'seeded' (top seeds spread)
+  // Distributes teams as equally as possible across num_groups.
+  // Result can be manually adjusted afterwards via POST /tournaments/:id/groups (drag-and-drop).
+  router.post('/:id/auto-draw', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const { mode, numGroups } = req.body as { mode?: 'random' | 'serpentine' | 'seeded'; numGroups?: number };
+      const result = await service.autoDrawGroups(id, { mode: mode ?? 'random', numGroups });
+      res.status(201).json({
+        data: result.groups,
+        warnings: result.warnings,
+        success: true,
+        message: result.warnings.length > 0
+          ? 'Sorteo completado con advertencias. Revisa la distribución.'
+          : 'Sorteo completado exitosamente.',
+      });
     } catch (err) {
       next(err);
     }
@@ -228,6 +251,39 @@ export function buildTournamentsRouter(service: TournamentsService, audit?: Audi
       };
       const matches = await service.generateKnockoutFromStandings(id, config);
       res.status(201).json({ data: matches });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/cups/:cupId/generate — generate knockout for a specific cup
+  router.post('/:id/cups/:cupId/generate', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const cupId = req.params['cupId'] as string;
+      const options = req.body as { startDate?: string; scheduledAt?: string };
+      const matches = await service.generateKnockoutByCup(id, cupId, options);
+      res.status(201).json({ data: matches });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // POST /tournaments/:id/advance-knockout — advance current knockout round (create next round from winners)
+  router.post('/:id/advance-knockout', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      tournamentIdSchema.parse(req.params); // validates tournament ID in URL
+      const { phaseId, includeThirdPlace, scheduledAt } = req.body as {
+        phaseId: string;
+        includeThirdPlace?: boolean;
+        scheduledAt?: string;
+      };
+      if (!phaseId) {
+        res.status(400).json({ data: null, success: false, message: 'phaseId es requerido' });
+        return;
+      }
+      const result = await service.advanceKnockout(phaseId, { includeThirdPlace, scheduledAt });
+      res.status(201).json({ data: result });
     } catch (err) {
       next(err);
     }
@@ -306,6 +362,29 @@ export function buildTournamentsRouter(service: TournamentsService, audit?: Audi
       const venueId = req.params['venueId'] as string;
       await service.deleteVenue(venueId);
       res.status(204).send();
+    } catch (err) { next(err); }
+  });
+
+  // ── Venue Courts (sub-spaces within a venue) ──────────────────────────────
+
+  // GET /tournaments/:id/venues/:venueId/courts — list courts for a venue
+  router.get('/:id/venues/:venueId/courts', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const venueId = req.params['venueId'] as string;
+      const result = await service.getVenueCourts(id, venueId);
+      res.json({ data: result });
+    } catch (err) { next(err); }
+  });
+
+  // POST /tournaments/:id/venues/:venueId/courts — create courts for a venue
+  router.post('/:id/venues/:venueId/courts', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = tournamentIdSchema.parse(req.params);
+      const venueId = req.params['venueId'] as string;
+      const courts = req.body as Array<{ name: string; courtNumber: number }>;
+      const result = await service.saveVenueCourts(id, venueId, courts);
+      res.status(201).json({ data: result });
     } catch (err) { next(err); }
   });
 
@@ -468,6 +547,14 @@ export function buildTournamentsRouter(service: TournamentsService, audit?: Audi
       const body = req.body as {
         teamName: string;
         shortName?: string;
+        clubName?: string;
+        imageUrl?: string;
+        colorPrimary?: string;
+        colorSecondary?: string;
+        instagramUrl?: string;
+        facebookUrl?: string;
+        tiktokUrl?: string;
+        youtubeUrl?: string;
         contactName: string;
         contactPhone: string;
         contactEmail?: string;
