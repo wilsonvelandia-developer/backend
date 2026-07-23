@@ -404,4 +404,136 @@ router.delete('/:id', async (req: Request, res: Response, next: NextFunction) =>
   }
 });
 
+// ── PUT /users/:id/status — activate or deactivate a user (admin only) ───────
+
+router.put('/:id/status', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const roles = JSON.parse((req.headers['x-user-roles'] as string) ?? '[]') as string[];
+    if (!roles.includes('admin')) {
+      return next(new ForbiddenError('Solo administradores pueden cambiar el estado de usuarios'));
+    }
+
+    const { id } = userIdSchema.parse(req.params);
+    const { isActive } = req.body as { isActive: boolean };
+
+    if (typeof isActive !== 'boolean') {
+      return next(new ValidationError('isActive debe ser true o false'));
+    }
+
+    const result = await pool.query(
+      `UPDATE users SET is_active = $1, updated_at = NOW() WHERE id = $2 RETURNING id, is_active`,
+      [isActive, id],
+    );
+    if (result.rowCount === 0) return next(new NotFoundError('User', id));
+
+    const status = isActive ? 'activado' : 'desactivado';
+    res.json({ data: { id, isActive }, success: true, message: `Usuario ${status}` });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /users/invite-organizer — invite an organizer with a plan (admin only)
+
+const inviteOrganizerSchema = z.object({
+  email:   z.string().email('Email inválido'),
+  name:    z.string().min(2).max(200),
+  phone:   z.string().max(30).optional(),
+  planSlug: z.enum(['basic', 'professional', 'premium']),
+  expiresInDays: z.number().int().min(30).max(365).default(30),
+});
+
+router.post('/invite-organizer', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const roles = JSON.parse((req.headers['x-user-roles'] as string) ?? '[]') as string[];
+    if (!roles.includes('admin')) {
+      return next(new ForbiddenError('Solo administradores pueden invitar organizadores'));
+    }
+
+    const dto = inviteOrganizerSchema.parse(req.body);
+    const adminId = req.headers['x-user-id'] as string;
+
+    // Check email doesn't already exist
+    const existing = await pool.query(`SELECT id FROM users WHERE email = $1`, [dto.email]);
+    if ((existing.rowCount ?? 0) > 0) {
+      return next(new ValidationError('Ya existe un usuario con ese email'));
+    }
+
+    // Load plan
+    const planResult = await pool.query<{ id: string }>(
+      `SELECT id FROM subscription_plans WHERE slug = $1 AND is_active = TRUE`,
+      [dto.planSlug],
+    );
+    if (planResult.rowCount === 0) {
+      return next(new ValidationError(`Plan "${dto.planSlug}" no encontrado`));
+    }
+    const planId = planResult.rows[0].id;
+
+    // Create user account with temp password (must change on first login)
+    const bcrypt = await import('bcrypt');
+    const tempPassword = Math.random().toString(36).slice(-8) + 'A1!'; // random 8+ chars
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const subscriptionExpires = new Date(Date.now() + dto.expiresInDays * 24 * 60 * 60 * 1000);
+
+    const userResult = await pool.query<{ id: string }>(
+      `INSERT INTO users (email, password_hash, name, phone, plan_id, subscription_expires_at, must_change_password, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, TRUE) RETURNING id`,
+      [dto.email, passwordHash, dto.name, dto.phone ?? null, planId, subscriptionExpires],
+    );
+    const userId = userResult.rows[0].id;
+
+    // Assign organizer role
+    await pool.query(
+      `INSERT INTO user_roles (user_id, role_id) VALUES ($1, 'organizer') ON CONFLICT DO NOTHING`,
+      [userId],
+    );
+
+    // Record invitation
+    await pool.query(
+      `INSERT INTO organizer_invitations (invited_by, email, plan_id, user_id, status)
+       VALUES ($1, $2, $3, $4, 'accepted')`,
+      [adminId, dto.email, planId, userId],
+    );
+
+    // TODO: Send welcome email with temp password
+    // For now, return it in the response (only visible to admin)
+
+    res.status(201).json({
+      data: {
+        userId,
+        email: dto.email,
+        name: dto.name,
+        plan: dto.planSlug,
+        tempPassword,
+        subscriptionExpiresAt: subscriptionExpires.toISOString(),
+      },
+      success: true,
+      message: `Organizador invitado. Contraseña temporal: ${tempPassword} (debe cambiarla al primer ingreso).`,
+    });
+  } catch (err) {
+    if (err instanceof ZodError) return next(new ValidationError('Datos inválidos', parseZodError(err)));
+    next(err);
+  }
+});
+
+// ── GET /users/plans — list available subscription plans (public) ─────────────
+
+router.get('/plans/available', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, slug, name, price_cop AS "priceCop",
+              max_teams_per_tournament AS "maxTeamsPerTournament",
+              max_active_tournaments AS "maxActiveTournaments",
+              max_venues AS "maxVenues",
+              features, display_order AS "displayOrder"
+       FROM subscription_plans
+       WHERE is_active = TRUE
+       ORDER BY display_order`,
+    );
+    res.json({ data: result.rows, success: true, message: '' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 export { router as usersRouter };

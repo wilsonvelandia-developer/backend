@@ -145,3 +145,27 @@
 - `enrollTeam` (inscripción pública): ahora acepta campos adicionales: `clubName`, `imageUrl`, `colorPrimary`, `colorSecondary`, `instagramUrl`, `facebookUrl`, `tiktokUrl`, `youtubeUrl`
 - Algoritmo de separación por club: ya no lanza error cuando un club tiene más equipos que grupos — distribuye de la mejor manera posible y retorna `warnings[]` en la respuesta
 - `autoDrawGroups` respuesta: ahora incluye `{ groups, warnings }` donde warnings contiene advertencias de separación parcial
+
+### Agregado
+- Se creó migración `1749600043000_expand-players-enrollment`: agrega a tabla `players` los campos `document_type`, `document_number`, `email`, `phone`, `birth_date`, `photo_url`, `document_front_url`, `document_back_url`, `eps_file_url`
+- Inscripción pública ahora crea cuenta de usuario automáticamente para cada jugador que tenga número de documento. Contraseña inicial = número de documento. `must_change_password = true` obliga a cambiarla en el primer ingreso
+- Se asigna automáticamente el rol `player` al usuario creado
+- Si el jugador ya existe (mismo document_number), se vincula al usuario existente sin crear duplicado
+
+### Cambiado
+- Endpoint `POST /tournaments/:id/enroll`: los jugadores ahora aceptan campos completos (documentType, documentNumber, email, phone, birthDate, photoUrl, documentFrontUrl, documentBackUrl, epsFileUrl)
+- Los datos del jugador se guardan tanto en la tabla `players` (visibles para el organizador) como en la tabla `users` (para autenticación)
+
+### Corregido
+- Se eliminaron campos personales duplicados de la tabla `players` (migración `1749600044000`): `document_type`, `document_number`, `email`, `phone`, `birth_date`, `photo_url`, `document_front_url`, `document_back_url`, `eps_file_url` — estos datos viven exclusivamente en la tabla `users`
+- `enrollTeam`: corregido para guardar datos personales SOLO en `users` (la fuente de verdad) y en `players` solo `team_id`, `user_id`, `name`, `jersey_number`, `position`
+- Si el jugador ya existe (mismo document_number), se actualizan sus datos en `users` con la info nueva proporcionada (COALESCE: no sobrescribe campos que ya tenían valor)
+
+### Agregado
+- Se creó tabla `subscription_plans` (migración `1749600045000`): 3 planes (Básico $49.900, Profesional $149.900, Premium $299.900 COP/mes) con límites de equipos, torneos, canchas y feature flags (chat, gallery, analytics, PDF, inscripción pública, notificaciones, branding, multi-copa)
+- Se creó tabla `organizer_invitations`: registro de invitaciones enviadas por admin a organizadores
+- Se agregaron campos `plan_id` y `subscription_expires_at` a la tabla `users` para asignación de plan
+- Se creó endpoint `POST /api/users/invite-organizer` (admin only): crea cuenta de organizador con plan asignado, contraseña temporal, y fecha de expiración. Retorna credenciales al admin para compartir
+- Se creó endpoint `PUT /api/users/:id/status` (admin only): activa/desactiva un usuario para controlar acceso
+- Se creó endpoint `GET /api/users/plans/available` (público): lista los planes activos para la landing page
+- Se creó `planLimitsMiddleware`: valida límites del plan del organizador antes de crear torneos/equipos. Retorna 403 con mensaje de upgrade cuando se excede el límite

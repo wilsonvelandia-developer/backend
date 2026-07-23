@@ -1283,7 +1283,7 @@ export class TournamentsRepository {
       );
       const teamId = teamResult.rows[0].id;
 
-      // Create players with full enrollment data + auto-create user accounts
+      // Create players: personal data → users table only, team link → players table
       const bcrypt = await import('bcrypt');
 
       for (const player of data.players) {
@@ -1299,6 +1299,25 @@ export class TournamentsRepository {
 
           if (existingUser.rowCount && existingUser.rowCount > 0) {
             userId = existingUser.rows[0].id;
+            // Update user with any new info provided (fill gaps)
+            await client.query(
+              `UPDATE users SET
+                name = COALESCE(NULLIF($2, ''), name),
+                phone = COALESCE(NULLIF($3, ''), phone),
+                birth_date = COALESCE($4::date, birth_date),
+                photo_url = COALESCE(NULLIF($5, ''), photo_url),
+                document_front_url = COALESCE(NULLIF($6, ''), document_front_url),
+                document_back_url = COALESCE(NULLIF($7, ''), document_back_url),
+                eps_file_url = COALESCE(NULLIF($8, ''), eps_file_url),
+                updated_at = NOW()
+               WHERE id = $1`,
+              [
+                userId, player.name, player.phone || null,
+                player.birthDate || null, player.photoUrl || null,
+                player.documentFrontUrl || null, player.documentBackUrl || null,
+                player.epsFileUrl || null,
+              ],
+            );
           } else {
             // Create new user — password = document number (must change on first login)
             const passwordHash = await bcrypt.hash(player.documentNumber, 10);
@@ -1329,19 +1348,11 @@ export class TournamentsRepository {
           }
         }
 
-        // Create player record with all fields
+        // Player record: ONLY team-specific fields + link to user (no personal data duplication)
         await client.query(
-          `INSERT INTO players (team_id, user_id, name, jersey_number, position,
-                                document_type, document_number, email, phone, birth_date,
-                                photo_url, document_front_url, document_back_url, eps_file_url)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-          [
-            teamId, userId, player.name, player.jerseyNumber, player.position || null,
-            player.documentType || null, player.documentNumber || null,
-            player.email || null, player.phone || null, player.birthDate || null,
-            player.photoUrl || null, player.documentFrontUrl || null,
-            player.documentBackUrl || null, player.epsFileUrl || null,
-          ],
+          `INSERT INTO players (team_id, user_id, name, jersey_number, position)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [teamId, userId, player.name, player.jerseyNumber, player.position || null],
         );
       }
 

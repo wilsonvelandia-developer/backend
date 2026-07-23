@@ -40,6 +40,7 @@ import { rateLimitMiddleware } from './services/gateway/src/middleware/rate-limi
 import { authMiddleware } from './services/gateway/src/middleware/auth.middleware.js';
 import { buildAuthorizationMiddleware } from './services/gateway/src/middleware/authorization.middleware.js';
 import { writeLoggerMiddleware } from './services/gateway/src/middleware/write-logger.middleware.js';
+import { planLimitsMiddleware } from './services/gateway/src/middleware/plan-limits.middleware.js';
 import { errorMiddleware } from './services/gateway/src/middleware/error.middleware.js';
 
 // Gateway direct routes (auth, users, notifications)
@@ -255,13 +256,14 @@ app.use('/public/tournaments', tournamentsRouter);
 app.use('/public/teams', teamsRouter);
 app.use('/public/matches', matchesRouter);
 app.use('/public/standings', standingsRouter);
+app.use('/public/plans', usersRouter); // GET /public/plans/available — no auth needed
 
 // ── Protected routes (auth required) ─────────────────────────────────────────
 app.use('/api/users', authMiddleware, usersRouter);
 app.use('/api/notifications', authMiddleware, notificationsRouter);
 app.use('/api/sports', authMiddleware, blockReadOnlyWrites, sportsRouter);
-app.use('/api/tournaments', authMiddleware, blockReadOnlyWrites, authorizeTournamentWrite, tournamentsRouter);
-app.use('/api/teams', authMiddleware, blockReadOnlyWrites, authorizeTeamWrite, injectOwnershipContext, teamsRouter);
+app.use('/api/tournaments', authMiddleware, planLimitsMiddleware, blockReadOnlyWrites, authorizeTournamentWrite, tournamentsRouter);
+app.use('/api/teams', authMiddleware, planLimitsMiddleware, blockReadOnlyWrites, authorizeTeamWrite, injectOwnershipContext, teamsRouter);
 app.use('/api/matches', authMiddleware, blockReadOnlyWrites, authorizeMatchWrite, matchesRouter);
 app.use('/api/standings', authMiddleware, standingsRouter);
 app.use('/api/venues', authMiddleware, blockReadOnlyWrites, venuesRouter);
