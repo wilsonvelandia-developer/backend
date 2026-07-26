@@ -1449,4 +1449,61 @@ export class MatchesRepository {
     );
     return result.rows;
   }
+
+  // ── MVP ────────────────────────────────────────────────────────────────────
+
+  /**
+   * Selects a player as MVP of the match for their team.
+   * One MVP per team per match (upserts on conflict).
+   */
+  async selectMvp(matchId: string, playerId: string, teamId: string, selectedBy: string | null): Promise<unknown> {
+    const result = await this.pool.query(
+      `INSERT INTO match_mvps (match_id, player_id, team_id, selected_by)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (match_id, team_id) DO UPDATE SET player_id = $2, selected_by = $4, created_at = NOW()
+       RETURNING *`,
+      [matchId, playerId, teamId, selectedBy],
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Gets MVP(s) for a match with all data needed to render the MVP card:
+   * player name, photo, jersey, team name, team logo, tournament name, match info.
+   */
+  async getMatchMvps(matchId: string): Promise<unknown[]> {
+    const result = await this.pool.query(
+      `SELECT mv.id,
+              mv.match_id AS "matchId",
+              mv.player_id AS "playerId",
+              mv.team_id AS "teamId",
+              p.name AS "playerName",
+              p.jersey_number AS "jerseyNumber",
+              p.position AS "position",
+              u.photo_url AS "playerPhotoUrl",
+              t.name AS "teamName",
+              t.image_url AS "teamLogoUrl",
+              t.color_primary AS "teamColor",
+              trn.name AS "tournamentName",
+              trn.image_url AS "tournamentLogoUrl",
+              m.scheduled_at AS "matchDate",
+              ht.name AS "homeTeamName",
+              at.name AS "awayTeamName",
+              COALESCE((SELECT SUM(mp.home_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS "homeScore",
+              COALESCE((SELECT SUM(mp.away_score) FROM match_periods mp WHERE mp.match_id = m.id), 0)::int AS "awayScore"
+       FROM match_mvps mv
+       JOIN players p ON p.id = mv.player_id
+       LEFT JOIN users u ON u.id = p.user_id
+       JOIN teams t ON t.id = mv.team_id
+       JOIN matches m ON m.id = mv.match_id
+       JOIN teams ht ON ht.id = m.home_team_id
+       JOIN teams at ON at.id = m.away_team_id
+       JOIN phases ph ON ph.id = m.phase_id
+       JOIN tournaments trn ON trn.id = ph.tournament_id
+       WHERE mv.match_id = $1
+       ORDER BY mv.created_at`,
+      [matchId],
+    );
+    return result.rows;
+  }
 }

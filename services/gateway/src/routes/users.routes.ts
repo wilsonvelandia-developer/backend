@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { z, ZodError } from 'zod';
 import { ForbiddenError, NotFoundError, ValidationError } from '@tournament/shared';
 import { config } from '../config.js';
+import { logger } from '../logger.js';
 
 /**
  * Users API routes — full CRUD for user profiles.
@@ -311,22 +312,26 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
     // Recompute display name if name parts changed
     const hasNameChange = dto.firstName !== undefined || dto.firstLastName !== undefined;
     if (hasNameChange) {
-      // We need current values for the parts not being updated
-      const currentUser = await pool.query<UserRow>(
-        `SELECT first_name, second_name, first_last_name, second_last_name FROM users WHERE id = $1`,
-        [id],
-      );
-      if (currentUser.rowCount === 0) return next(new NotFoundError('User', id));
-      const cur = currentUser.rows[0];
+      try {
+        const currentUser = await pool.query<UserRow>(
+          `SELECT first_name, second_name, first_last_name, second_last_name FROM users WHERE id = $1`,
+          [id],
+        );
+        if (currentUser.rowCount === 0) return next(new NotFoundError('User', id));
+        const cur = currentUser.rows[0];
 
-      const fn  = dto.firstName      ?? cur.first_name ?? '';
-      const sn  = dto.secondName     ?? cur.second_name ?? '';
-      const fln = dto.firstLastName  ?? cur.first_last_name ?? '';
-      const sln = dto.secondLastName ?? cur.second_last_name ?? '';
-      const fullName = [fn, sn, fln, sln].filter(Boolean).join(' ');
+        const fn  = (dto.firstName as string)     ?? cur.first_name ?? '';
+        const sn  = (dto.secondName as string)    ?? cur.second_name ?? '';
+        const fln = (dto.firstLastName as string) ?? cur.first_last_name ?? '';
+        const sln = (dto.secondLastName as string) ?? cur.second_last_name ?? '';
+        const fullName = [fn, sn, fln, sln].filter(Boolean).join(' ');
 
-      fields.push(`name = $${idx++}`);
-      values.push(fullName);
+        fields.push(`name = $${idx++}`);
+        values.push(fullName);
+      } catch (nameErr) {
+        logger.error({ nameErr, id }, 'Error computing display name');
+        // Continue without updating name — non-critical
+      }
     }
 
     if (fields.length === 0 && !dto.roles) {
@@ -337,11 +342,16 @@ router.put('/:id', async (req: Request, res: Response, next: NextFunction) => {
       fields.push(`updated_at = NOW()`);
       values.push(id);
 
-      const result = await pool.query(
-        `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id`,
-        values,
-      );
-      if (result.rowCount === 0) return next(new NotFoundError('User', id));
+      const query = `UPDATE users SET ${fields.join(', ')} WHERE id = $${idx} RETURNING id`;
+      logger.info({ query, values: values.map((v, i) => `$${i+1}=${typeof v === 'string' && v.length > 50 ? v.slice(0,50)+'...' : v}`), userId: id }, 'Updating user profile');
+
+      try {
+        const result = await pool.query(query, values);
+        if (result.rowCount === 0) return next(new NotFoundError('User', id));
+      } catch (dbErr) {
+        logger.error({ dbErr, query, id }, 'Error updating user profile');
+        return next(dbErr);
+      }
     }
 
     // Update roles if provided

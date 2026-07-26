@@ -634,6 +634,7 @@ export class TournamentsRepository {
       matchesPerDay?: number;
       firstMatchTime?: string;
       randomOrder?: boolean;
+      doubleRoundRobin?: boolean;
     },
   ): Promise<unknown[]> {
     // Load tournament config
@@ -669,9 +670,15 @@ export class TournamentsRepository {
     const allMatches: Array<{ homeTeamId: string; awayTeamId: string; groupName: string; roundNum: number }> = [];
 
     for (const [groupName, teamIds] of groupMap) {
-      const matches = this.circleMethodRoundRobin(teamIds);
+      let matches = this.circleMethodRoundRobin(teamIds);
+
+      // Double round-robin: add return matches with home/away swapped
+      if (config.doubleRoundRobin) {
+        const returnMatches = matches.map((m) => ({ homeTeamId: m.awayTeamId, awayTeamId: m.homeTeamId }));
+        matches = [...matches, ...returnMatches];
+      }
+
       if (randomOrder) {
-        // Fisher-Yates shuffle
         for (let i = matches.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [matches[i], matches[j]] = [matches[j], matches[i]];
@@ -759,6 +766,10 @@ export class TournamentsRepository {
     const matchesPerRound = n / 2;
     const allMatches: Array<{ homeTeamId: string; awayTeamId: string }> = [];
 
+    // Track home counts per team for balancing
+    const homeCounts = new Map<string, number>();
+    for (const t of teams) homeCounts.set(t, 0);
+
     const fixed    = teams[0];
     const rotating = teams.slice(1);
 
@@ -766,12 +777,20 @@ export class TournamentsRepository {
       const roundTeams = [fixed, ...rotating];
 
       for (let m = 0; m < matchesPerRound; m++) {
-        const home = roundTeams[m];
-        const away = roundTeams[n - 1 - m];
+        let home = roundTeams[m];
+        let away = roundTeams[n - 1 - m];
 
         // Skip BYE matches
         if (home === 'BYE' || away === 'BYE') continue;
 
+        // Balance home/away: swap if 'away' has fewer home games than 'home'
+        const homeCount = homeCounts.get(home) ?? 0;
+        const awayCount = homeCounts.get(away) ?? 0;
+        if (awayCount < homeCount) {
+          [home, away] = [away, home];
+        }
+
+        homeCounts.set(home, (homeCounts.get(home) ?? 0) + 1);
         allMatches.push({ homeTeamId: home, awayTeamId: away });
       }
 

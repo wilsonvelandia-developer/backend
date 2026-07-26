@@ -181,3 +181,12 @@
 
 ### Cambiado
 - Rutas `/api/tournaments`, `/api/teams` y `/api/matches`: ahora pasan por `tournamentLifecycleMiddleware` además de los demás middlewares existentes
+
+### Agregado
+- Se implementó opción de ida y vuelta (double round-robin) en generación de fixture: parámetro `doubleRoundRobin` en `generateGroupFixture` genera partidos de vuelta con local/visitante invertido
+- Se mejoró el balance local/visitante en el algoritmo circle method: contador de home games por equipo con swap automático para equilibrar la distribución
+- Se creó endpoint `POST /api/tournaments/:tournamentId/import-fixture` para importar fixture desde CSV/JSON: acepta array de partidos con `homeTeamId`, `awayTeamId`, `scheduledAt`, `venue`, `round`
+
+### Cambiado
+- `circleMethodRoundRobin`: ahora trackea `homeCounts` por equipo y hace swap cuando un equipo tiene más partidos de local que su rival en ese enfrentamiento, mejorando la equidad
+- `generateGroupFixture`: acepta `doubleRoundRobin?: boolean` — cuando es true, genera N-1 rondas de ida + N-1 rondas de vuelta (swapping home/away)

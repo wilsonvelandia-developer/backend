@@ -538,5 +538,35 @@ export function buildMatchesRouter(service: MatchesService, audit?: AuditService
     }
   });
 
+  // ── MVP Selection ──────────────────────────────────────────────────────────
+
+  // POST /matches/:id/mvp — select MVP(s) for a match
+  router.post('/:id/mvp', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const { playerId, teamId } = req.body as { playerId: string; teamId: string };
+      if (!playerId || !teamId) {
+        res.status(400).json({ data: null, success: false, message: 'playerId y teamId son requeridos' });
+        return;
+      }
+      const userId = req.headers['x-user-id'] as string | undefined;
+      const mvp = await service.selectMvp(id, playerId, teamId, userId ?? null);
+      res.status(201).json({ data: mvp });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // GET /matches/:id/mvp — get MVP(s) for a match with card data
+  router.get('/:id/mvp', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { id } = matchIdSchema.parse(req.params);
+      const mvps = await service.getMatchMvps(id);
+      res.json({ data: mvps });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

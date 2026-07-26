@@ -237,4 +237,14 @@ export class MatchesService {
   async getSanctionTypesForMatch(matchId: string): Promise<unknown[]> {
     return this.repo.findSanctionTypesForMatch(matchId);
   }
+
+  /** Select a player as MVP of the match for their team. */
+  async selectMvp(matchId: string, playerId: string, teamId: string, selectedBy: string | null): Promise<unknown> {
+    return this.repo.selectMvp(matchId, playerId, teamId, selectedBy);
+  }
+
+  /** Get MVP(s) for a match with full card data. */
+  async getMatchMvps(matchId: string): Promise<unknown[]> {
+    return this.repo.getMatchMvps(matchId);
+  }
 }
