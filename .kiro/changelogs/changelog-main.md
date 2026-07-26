@@ -190,3 +190,58 @@
 ### Cambiado
 - `circleMethodRoundRobin`: ahora trackea `homeCounts` por equipo y hace swap cuando un equipo tiene más partidos de local que su rival en ese enfrentamiento, mejorando la equidad
 - `generateGroupFixture`: acepta `doubleRoundRobin?: boolean` — cuando es true, genera N-1 rondas de ida + N-1 rondas de vuelta (swapping home/away)
+
+### Agregado
+
+#### Sistema de Feature Flags por Plan
+- Se creó tabla `platform_features`: catálogo maestro de 33 funcionalidades organizadas por categoría (sports, monetization, engagement, intelligence, operations, scalability)
+- Se creó tabla `plan_features`: junction table que vincula features a planes con toggle `is_enabled` y config JSONB personalizable
+- Se creó `feature-gate.middleware.ts`: middleware factory que valida si el plan del usuario incluye la feature solicitada antes de permitir acceso, con caché de 5 min por plan
+- Se seedearon las 33 features y se asignaron a los 3 planes existentes (Básico: 3, Profesional: 15, Premium: todas)
+- Se creó endpoint `GET /api/modules/features` para listar todas las features con sus planes asignados
+- Se creó endpoint `PUT /api/modules/features/:code/plans/:planId` para activar/desactivar features por plan (admin only)
+
+#### Gestión Deportiva Avanzada
+- Se creó tabla `match_sheets`: planilla digital de partido con firmas del árbitro, delegados y capitanes
+- Se creó tabla `player_transfers`: transferencias entre equipos con flujo de aprobación (pending → approved)
+- Se creó tabla `player_injuries`: registro de lesiones con tipo, severidad, fecha y tiempo estimado de recuperación
+- Se creó tabla `player_match_stats`: estadísticas avanzadas por jugador/partido (asistencias, aces, triples, etc.)
+- Se creó tabla `fair_play_scores`: puntuación de fair play por equipo por partido (puntualidad, deportividad, uniforme, disciplina)
+- Endpoints CRUD completos para cada módulo, gateados por feature flag
+
+#### Monetización
+- Se creó tabla `ad_spaces`: espacios publicitarios/patrocinadores por torneo con logo, URL y placement
+- Se creó tabla `shop_products`: productos de tienda virtual con precio en COP, stock e imagen
+- Se creó tabla `shop_orders` + `shop_order_items`: sistema de órdenes con cálculo automático de total
+- Endpoints CRUD para sponsors y tienda, gateados por feature flag
+
+#### Engagement y Comunidad
+- Se creó tabla `prediction_pools` + `predictions`: sistema de polla con puntos configurables (exacto/ganador)
+- Se creó tabla `live_polls` + `live_poll_options` + `live_poll_votes`: votaciones en vivo (MVP, mejor jugada)
+- Se creó tabla `social_posts` + `social_post_likes` + `social_post_comments`: muro social por torneo
+- Se creó tabla `referee_ratings`: calificación de árbitros por equipo post-partido con 4 dimensiones
+- Se creó tabla `push_tokens`: registro de tokens FCM para push notifications
+- Endpoint leaderboard para polla, endpoint de resultados para encuestas en vivo
+
+#### Inteligencia y Datos
+- Se creó endpoint `GET /api/modules/analytics/:tournamentId`: dashboard con métricas consolidadas (equipos, partidos, jugadores, goles, sanciones)
+- Se creó endpoint `GET /api/modules/compare`: comparador de jugadores (radar de estadísticas)
+- Se creó tabla `team_elo_ratings` + endpoint `POST /api/modules/elo/:tournamentId/recalculate`: sistema Elo completo con K=32
+
+#### Operaciones y Logística
+- Se creó tabla `match_checkins`: check-in QR de jugadores antes del partido
+- Se creó tabla `training_sessions` + `training_attendance`: control de asistencia a entrenamientos
+- Se creó tabla `team_uniforms`: registro de uniformes (local/visitante) con detección de conflicto de colores
+- Se creó endpoint `GET /api/modules/calendar/:tournamentId.ics`: exportación iCal de fixture para Google Calendar
+- Se creó tabla `match_incidents`: reportes de incidentes con severidad y flujo de resolución
+
+#### Escalabilidad Técnica
+- Se creó tabla `webhook_subscriptions` + `webhook_logs`: webhooks configurables por torneo/evento
+- Se creó endpoint `GET /api/modules/data-export/my-data`: exportación de datos personales (Habeas Data)
+- Se creó endpoint `DELETE /api/modules/data-export/my-data`: derecho al olvido (anonimización)
+- Se creó endpoint `POST /api/modules/api-keys`: generación de API keys públicas con hash SHA-256
+- Se creó endpoint público `GET /public/calendar/:tournamentId.ics` para suscripción sin auth
+
+### Cambiado
+- `server-unified.ts`: se integró `buildFeatureModulesRouter` montado en `/api/modules` con auth middleware
+- Todas las rutas de módulos pasan por `featureGate(code)` que valida el plan del usuario antes de permitir acceso

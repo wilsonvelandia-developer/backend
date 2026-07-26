@@ -801,6 +801,31 @@ app.delete('/api/scouting/shortlists/:id/players/:playerId', authMiddleware, asy
   res.json({ data: null, success: true, message: 'Jugador removido de la lista' });
 });
 
+// ── Feature Modules (plan-gated) ─────────────────────────────────────────────
+import { buildFeatureModulesRouter } from './modules/feature-modules.js';
+const featureModulesRouter = buildFeatureModulesRouter(pool, authMiddleware);
+app.use('/api/modules', authMiddleware, featureModulesRouter);
+
+// Public calendar sync (no auth needed for iCal)
+app.get('/public/calendar/:tournamentId.ics', async (req: Request, res: Response) => {
+  const result = await pool.query(
+    `SELECT m.id, m.scheduled_at, m.venue, ht.name AS home, at.name AS away, trn.name AS tournament
+     FROM matches m JOIN teams ht ON ht.id = m.home_team_id JOIN teams at ON at.id = m.away_team_id
+     JOIN phases ph ON ph.id = m.phase_id JOIN tournaments trn ON trn.id = ph.tournament_id
+     WHERE ph.tournament_id = $1 AND m.scheduled_at IS NOT NULL ORDER BY m.scheduled_at`,
+    [req.params['tournamentId']],
+  );
+  let ical = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//OlimpicApp//ES\r\n';
+  for (const m of result.rows) {
+    const row = m as Record<string, string>;
+    const start = new Date(row['scheduled_at']).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    ical += `BEGIN:VEVENT\r\nUID:${row['id']}@olimpicapp\r\nDTSTART:${start}\r\nSUMMARY:${row['home']} vs ${row['away']}\r\nEND:VEVENT\r\n`;
+  }
+  ical += 'END:VCALENDAR\r\n';
+  res.setHeader('Content-Type', 'text/calendar');
+  res.send(ical);
+});
+
 // ── 404 ──────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ data: null, success: false, message: 'Ruta no encontrada' });
